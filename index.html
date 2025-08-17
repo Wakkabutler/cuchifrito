@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2025 Media Tracker - Editable</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* --- THEME VARIABLES --- */
+        :root {
+            --bg-color: #111827;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --card-bg: #1f2937;
+            --card-border: #374151;
+            --input-bg: #374151;
+            --input-border: #4b5563;
+            --btn-secondary-bg: #4b5563;
+            --btn-secondary-hover-bg: #6b7280;
+            --chart-grid-color: rgba(255, 255, 255, 0.1);
+            --chart-tick-color: #9ca3af;
+        }
+
+        html.light-mode {
+            --bg-color: #f9fafb;
+            --text-primary: #111827;
+            --text-secondary: #4b5563;
+            --card-bg: #ffffff;
+            --card-border: #e5e7eb;
+            --input-bg: #e5e7eb;
+            --input-border: #d1d5db;
+            --btn-secondary-bg: #d1d5db;
+            --btn-secondary-hover-bg: #9ca3af;
+            --chart-grid-color: rgba(0, 0, 0, 0.1);
+            --chart-tick-color: #4b5563;
+        }
+        /* --- END THEME VARIABLES --- */
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .tab-active { background-color: #3b82f6; color: #ffffff; }
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out, background-color 0.3s, border-color 0.3s;
+            position: relative;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .score { font-weight: 700; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; }
+        .score-s { background-color: #f59e0b; color: #1f2937; }
+        .score-a { background-color: #10b981; color: #1f2937; }
+        .score-b { background-color: #3b82f6; color: #ffffff; }
+        .score-c { background-color: #f97316; color: #ffffff; }
+        .score-d { background-color: #ef4444; color: #ffffff; }
+        .score-f { background-color: #7f1d1d; color: #ffffff; }
+        .progress-bar { background-color: #374151; }
+        .progress-bar-inner { background-color: #3b82f6; }
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .sort-btn { background-color: var(--input-bg); color: var(--text-secondary); padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 500; transition: background-color 0.2s; }
+        .sort-btn:hover { background-color: var(--btn-secondary-hover-bg); }
+        .sort-btn-active { background-color: #3b82f6; color: white; }
+        
+        /* Modal Styles */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(17, 24, 39, 0.8); display: flex; align-items: center; justify-content: center; z-index: 50; backdrop-filter: blur(4px); }
+        .modal-content { background-color: var(--card-bg); border: 1px solid var(--card-border); padding: 2rem; border-radius: 0.75rem; width: 90%; max-width: 500px; }
+        .form-input { background-color: var(--input-bg); border: 1px solid var(--input-border); color: var(--text-primary); border-radius: 0.375rem; padding: 0.75rem 1rem; width: 100%; }
+        .form-input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px #3b82f6; }
+        .form-checkbox { width: 1.25rem; height: 1.25rem; background-color: var(--input-bg); border: 1px solid var(--input-border); border-radius: 0.25rem; }
+        .form-checkbox:checked { background-color: #3b82f6; border-color: #3b82f6; }
+        .btn-primary { background-color: #3b82f6; color: white; font-weight: 600; padding: 0.75rem 1.5rem; border-radius: 0.375rem; transition: background-color 0.2s; }
+        .btn-primary:hover { background-color: #2563eb; }
+        .btn-secondary { background-color: var(--btn-secondary-bg); color: var(--text-primary); font-weight: 600; padding: 0.75rem 1.5rem; border-radius: 0.375rem; transition: background-color 0.2s; }
+        .btn-secondary:hover { background-color: var(--btn-secondary-hover-bg); }
+
+        /* Edit/Delete Buttons on Card */
+        .card-actions { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.5rem; opacity: 0; transition: opacity 0.2s; }
+        .card:hover .card-actions, .list-item:hover .card-actions { opacity: 1; }
+        .card-action-btn { background-color: rgba(55, 65, 81, 0.7); border-radius: 9999px; padding: 0.3rem; line-height: 0; }
+        .card-action-btn:hover { background-color: #3b82f6; }
+        .list-item { position: relative; } /* For positioning actions */
+        
+        /* Theme Toggle */
+        #theme-toggle {
+            background-color: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 9999px;
+            padding: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.3s, border-color 0.3s;
+        }
+        #theme-toggle:hover {
+            background-color: var(--input-bg);
+        }
+        
+        /* Spinner for AI Modal */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #3b82f6;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 2rem auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    <script>
+        // Apply theme on initial load to prevent flash
+        if (localStorage.getItem('theme') === 'light') {
+            document.documentElement.classList.add('light-mode');
+        } else {
+            document.documentElement.classList.remove('light-mode');
+        }
+    </script>
+</head>
+<body class="p-4 sm:p-6 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-8 relative">
+             <div class="absolute top-0 right-0 flex items-center gap-2">
+                <button id="theme-toggle" title="Toggle theme">
+                    <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                    <svg id="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                </button>
+            </div>
+            <h1 class="text-4xl font-bold tracking-tight pt-2">2025 Media Tracker</h1>
+            <p class="text-lg text-gray-400 mt-2">A consolidated view of all things finished this year.</p>
+        </header>
+
+        <!-- Tabs -->
+        <div class="mb-8 flex flex-wrap justify-center gap-2">
+            <button class="tab px-4 py-2 rounded-md font-semibold transition tab-active" onclick="showTab('overview')">Overview</button>
+            <button class="tab px-4 py-2 rounded-md font-semibold transition" onclick="showTab('ernie')">Ernie's List</button>
+            <button class="tab px-4 py-2 rounded-md font-semibold transition" onclick="showTab('jon')">Jon's List</button>
+            <button class="tab px-4 py-2 rounded-md font-semibold transition" onclick="showTab('gameclub')">GameClub</button>
+        </div>
+
+        <!-- Content Panes -->
+        <main id="content-container">
+            <div id="overview" class="tab-content fade-in"></div>
+            <div id="ernie" class="tab-content hidden fade-in"></div>
+            <div id="jon" class="tab-content hidden fade-in"></div>
+            <div id="gameclub" class="tab-content hidden fade-in"></div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div id="media-modal" class="modal-overlay hidden">
+        <div class="modal-content fade-in">
+            <h2 id="modal-title" class="text-2xl font-bold mb-6">Add New Item</h2>
+            <form id="media-form">
+                <input type="hidden" id="form-person">
+                <input type="hidden" id="form-category">
+                <input type="hidden" id="form-item-id">
+                
+                <div class="space-y-4">
+                    <div id="form-title-group">
+                        <label for="form-title" class="block text-sm font-medium text-gray-300 mb-1">Title</label>
+                        <input type="text" id="form-title" class="form-input" required>
+                    </div>
+                    <div id="form-score-group">
+                        <label for="form-score" class="block text-sm font-medium text-gray-300 mb-1">Score (e.g., 8.5 or B+)</label>
+                        <input type="text" id="form-score" class="form-input">
+                    </div>
+                    <div id="form-date-group">
+                        <label for="form-date" class="block text-sm font-medium text-gray-300 mb-1">Date Finished</label>
+                        <input type="date" id="form-date" class="form-input">
+                    </div>
+                    <div id="form-platform-group">
+                        <label for="form-platform" class="block text-sm font-medium text-gray-300 mb-1">Platform</label>
+                        <input type="text" id="form-platform" class="form-input">
+                    </div>
+                     <div id="form-hours-group">
+                        <label for="form-hours" class="block text-sm font-medium text-gray-300 mb-1">Hours</label>
+                        <input type="number" id="form-hours" class="form-input">
+                    </div>
+                    <!-- GameClub Specific Fields -->
+                    <div id="form-gameclub-group" class="hidden space-y-2">
+                         <label class="block text-sm font-medium text-gray-300 mb-1">Finished Status</label>
+                         <div class="flex items-center gap-2">
+                            <input type="checkbox" id="form-jon-finished" class="form-checkbox">
+                            <label for="form-jon-finished">Jon</label>
+                         </div>
+                         <div class="flex items-center gap-2">
+                            <input type="checkbox" id="form-ernie-finished" class="form-checkbox">
+                            <label for="form-ernie-finished">Ernie</label>
+                         </div>
+                    </div>
+                    <div id="form-coop-group" class="hidden">
+                        <label class="block text-sm font-medium text-gray-300 mb-1">Status</label>
+                        <div class="flex items-center gap-2">
+                           <input type="checkbox" id="form-coop-finished" class="form-checkbox">
+                           <label for="form-coop-finished">Finished</label>
+                        </div>
+                   </div>
+                </div>
+
+                <div class="mt-8 flex justify-end gap-4">
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Item</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- AI Recommendations Modal -->
+    <div id="recommendation-modal" class="modal-overlay hidden">
+        <div class="modal-content fade-in">
+            <h2 id="recommendation-modal-title" class="text-2xl font-bold mb-6">✨ AI Recommendations</h2>
+            <div id="recommendation-content">
+                <!-- Spinner will be shown here -->
+            </div>
+            <div class="mt-8 flex justify-end">
+                <button type="button" class="btn-secondary" onclick="closeRecommendationModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA STORE ---
+        let mediaData = { ernie: {}, jon: {} };
+        let scoreChartInstance; // To hold the chart instance
+
+        // Original CSV data for initial population
+        const ernieDataCSV = `No.,Title,Date Finished,Platform,Hours,Score,,No.,Title,Date Finished,Score,,No.,Title,Score,,No.,Title,Score
+1,Metaphor: ReFantazio,1/23/2025,Xbox S|X,130,10,,1,Uzumaki by Junji Ito,3/12/2025,A,,1,Mindhunter S1,A,,1,Venom: The Last Dance,D-
+2,Shadow Generations,2/8/2025,Steamdeck,5,8.5,,2,All You Need is Kill by Hiroshi Sakurazaka,4/3/2025,A,,2,Mindhunter S2,A,,2,Speak No Evil,B-
+3,Sonic Generations ,2/23/2025,Steamdeck,6,8.5,,3,The Cabin at the End of the World by Paul G. Tremblay,6/22/2025,C-,,3,Severance S1,S,,3,Heretic,A+
+4,Metal Gear Solid,2/23/2025,Anbernic,8,10,,4,,,,,4,Castlevania S1,A+,,4,Emilia Pérez,C-
+5,A Way Out (With Jon),3/2/2025,Xbox S|X,7,8,,5,,,,,5,Castlevania S2,A+,,5,Sonic 3,A
+6,Dino Crisis,3/2/2025,PS5,8,8,,6,,,,,6,Castlevania S3,A,,6,The Crow,A
+7,Silent Hill,3/16/2025,PS5,6,9,,7,,,,,7,Castlevania S4,A,,7,The Crow: City of Angels,D
+8,Silent Hill 3,3/23/2025,PS5,7,8,,8,,,,,8,Castlevania Nocturne,A,,8,The Crow: Salvation,D
+9,The Thing,4/13/2025,Steamdeck,10,7,,9,,,,,9,Fallout,S,,9,The Crow: Wicked Prayer,F
+10,Alan Wake 2,4/20/2025,PS5,20,9.5,,10,,,,,10,X-Men 97,A,,10,Final Fantasy Advent Children,B+
+11,Clock Tower,4/28/2025,Anbernic,3,8,,11,,,,,11,The Boys S4,A,,11,The Last Ronin,A
+12,Parasite Eve,5/12/2025,PS5,10,9,,12,,,,,12,The Bear S1,A,,12,The Last Ronin Part 2,A
+13,Parasite Eve II,5/26/2025,PS5,15,8,,13,,,,,13,The Bear S2,A,,13,The Strangers: Chapter 1,C
+14,Lollipop Chainsaw,6/1/2025,PS5,8,7,,14,,,,,14,The Bear S3,A,,14,The Strangers: Chapter 2,B
+15,Final Fantasy VII Rebirth,6/29/2025,PS5,100,10,,15,,,,,15,Law & Order SVU S7,B,,15,The Strangers: Chapter 3,A
+16,Kingdom Hearts IV,7/13/2025,PS5,40,9,,16,,,,,16,Interview with the Vampire S2,A,,16,The Substance,A+
+17,Elden Ring: Shadow of the Erdtree,7/20/2025,PS5,80,10,,17,,,,,17,Daredevil S1,A,,17,Drive,A
+18,Death Stranding 2: On the Beach,7/29/2025,PS5,135,9,,18,,,,,18,The White Lotus S1,A+,,18,Monster Hunter,C+
+19,Still Wakes the Deep: Siren's Rest,8/4/2025,Xbox S|X,3,8,,19,,,,,19,The White Lotus S2,B,,19,The Gorge,B+`;
+
+        const jonDataCSV = `No.,Title,Date Finished,Platform,Hours,Score,,No.,Title,Date Finished,Score,,No.,Shows & Anime,Score,,No.,Movies,Score
+1,Outer Worlds (PSPLUS),1/10/2025,PS5,28,8,,1,Tomie,2/19/2025,B,,1,Vinland Saga,A,,1,Den of Thieves Pantera,B
+2,Shadowrun Returns (PSPLUS),1/18/2025,PS5,22,7,,2,Neuromancer,2/23/2025,A,,2,Sakamoto Days,B,,2,The Silent Hour,C
+3,Dishonored (Gamepass),1/25/2025,XBOX,11,9,,3,The Dreams In The Witch House,3/5/2025,A,,3,American Primeval,A,,3,The Rock,A
+4,Silent Hill 2 Remake (Gamefly),2/1/2025,PS5,18,9,,4,The Pentagon's Brain,7/11/2025,A,,4,Onimusha,B,,4,American Star,C
+5,Slitterhead (Gamefly),2/22/2025,PS5,15,7,,5,Department of Truth Vol 5,7/13/2025,A,,5,Alice In Borderlands,A,,5,Redemption,B
+6,No Way Out (Gamepass),3/2/2025,XBOX,7,8,,6,,,,6,The Boys,A,,6,The Killer,A
+7,Split/Second (Gamepass),3/8/2025,XBOX,12,9,,7,,,,7,Invincible,A,,7,The Raid,A
+8,Terminator Resistance (PSPLUS),3/15/2025,PS5,16,8,,8,,,,8,Scavengers Reign,A,,8,The Raid 2,A
+9,Robocop (Gamefly),3/29/2025,PS5,18,9,,9,,,,9,Delicious In Dungeon,B,,9,Dredd,A
+10,Evil West (PSPLUS),4/5/2025,PS5,14,8,,10,,,,10,Solo Leveling,B,,10,Upgrade,A
+11,Dead Island 2 (Gamepass),4/12/2025,XBOX,25,8,,11,,,,11,Cyberpunk Edgerunners,A,,11,District 9,A
+12,Stellar Blade (Gamefly),5/3/2025,PS5,30,9,,12,,,,12,Arcane,A,,12,Hardcore Henry,B
+13,Rise of The Ronin (Gamefly),5/17/2025,PS5,40,8,,13,,,,13,Jujutsu Kaisen,B,,13,The Night Comes For Us,A
+14,FFVII Rebirth (Gamefly),6/14/2025,PS5,80,9,,14,,,,14,Attack On Titan,A,,14,Headshot,B
+15,Black Myth Wukong (Gamefly),8/31/2025,PS5,35,9,,15,,,,15,Castlevania,A,,15,Beyond Skyline,C
+16,Warhammer Space Marine 2 (Gamefly),9/13/2025,XBOX,15,8,,16,,,,16,Blue Eye Samurai,A,,16,The Equalizer 3,B
+17,Silent Hill F (Gamefly),10/11/2025,PS5,16,8,,17,,,,17,,,,,17,The Beekeeper,C
+18,Avowed (Gamepass),11/22/2025,XBOX,30,9,,18,,,,18,The Batman 2,A,,18,Civil War,A
+19,Indiana Jones (Gamepass),12/13/2025,XBOX,20,9,,19,,,,19,The Penguin,A,,19,The Accountant 2,B
+20,,,,,,,,20,,,,20,The Diplomat,B,,20,Mickey 17,C
+21,,,,,,,,21,,,,21,The Sympathizer,A,,21,Nosferatu,A
+22,,,,,,,,22,,,,22,The Bride,B,,22,Megalopolis,A
+23,,,,,,,,23,,,,23,The Franchise,C,,23,The Bikeriders,B
+24,,,,,,,,24,,,,24,The Savages,B,,24,A Quiet Place Day One,A
+25,,,,,,,,25,,,,25,Alien Romulus,A,,25,Bad Boys 4,B
+26,,,,,,,,26,,,,26,Beetlejuice 2,A,,26,Beverly Hills Cop 4,C
+27,,,,,,,,27,,,,27,Gladiator 2,B,,27,Borderlands,C
+28,,,,,,,,28,,,,28,Joker 2,A,,28,Carry On,B
+29,,,,,,,,29,,,,29,Lord of The Rings,A,,29,Deadpool 3,A
+30,,,,,,,,30,,,,30,Moana 2,C,,30,The Fall Guy,B
+31,,,,,,,,31,,,,31,Sonic 3,A,,31,Furiosa,A
+32,,,,,,,,32,,,,32,Mufasa,C,,32,Horizon,B
+33,,,,,,,,33,,,,33,Karate Kid,B,,33,Inside Out 2,A
+34,,,,,,,,34,,,,34,Spider-man,A,,34,Kingdom of The Planet of The Apes,A
+35,,,,,,,,35,,,,35,Kraven The Hunter,C,,35,Maxxxine,A
+36,,,,,,,,36,,,,36,Transformers One,B,,36,Godzilla X Kong,B
+37,,,,,,,,37,,,,37,Venom 3,C,,37,Ghostbusters,C
+38,,,,,,,,38,,,,38,Wolfman,B,,38,Twisters,A
+39,,,,,,,,39,,,,39,Wicked,C,,39,Dune 2,A
+40,,,,,,,,40,,,,40,Dune Prophecy,A,,40,The Watchers,B
+41,,,,,,,,41,,,,41,Umbrella Academy,A,,41,Thanksgiving,A
+42,,,,,,,,42,,,,42,What If?,B,,42,The Creator,B
+43,,,,,,,,43,,,,43,Agatha,B,,43,Rebel Moon,C
+44,,,,,,,,44,,,,44,Daredevil,A,,44,The Holdovers,A
+45,,,,,,,,45,,,,45,Ironheart,C,,45,Past Lives,A
+46,,,,,,,,46,,,,46,Wonder Man,C,,46,Priscilla,B
+47,,,,,,,,47,,,,47,Creature Commandos,B,,47,The Iron Claw,A
+48,,,,,,,,48,,,,48,Lanterns,A,,48,Poor Things,A
+49,,,,,,,,49,,,,49,Peacemaker,A,,49,Saltburn,B
+50,,,,,,,,50,,,,50,Waller,C,,50,Dream Scenario,A
+51,,,,,,,,51,,,,51,Paradise Lost,B,,51,American Fiction,A
+52,,,,,,,,52,,,,52,The Authority,A,,52,The Color Purple,B
+53,,,,,,,,53,,,,53,Brave and The Bold,A,,53,Aquaman 2,C
+54,,,,,,,,54,,,,54,Supergirl,B,,54,The Warriors: Walled In,A
+55,,,,,,,,55,,,,55,Pacific Rim,A
+56,,,,,,,,56,,,,56,Pacific Rim Uprising,C
+57,,,,,,,,57,,,,57,976 Evil,B
+58,,,,,,,,58,,,,58,Out of The Dark,C
+59,,,,,,,,59,,,,59,Demon City,B
+60,,,,,,,,60,,,,60,Campfire Tales,A
+61,,,,,,,,61,,,,61,Pulse,B
+62,,,,,,,,62,,,,62,The Bye Bye Man,C
+63,,,,,,,,63,,,,63,Wraith,A
+64,,,,,,,,64,,,,64,24 Hours To Live,B
+65,,,,,,,,65,,,,65,Slice,C
+66,,,,,,,,66,,,,66,Avengement,A
+67,,,,,,,,67,,,,67,Y2K,C
+68,,,,,,,,68,,,,68,Logan,A
+69,,,,,,,,69,,,,69,The Intruder ,B
+70,,,,,,,,70,,,,70, Opera,B
+71,,,,,,,,71,,,,71,To Live and Die In LA,A
+72,,,,,,,,72,,,,72,Phantasm,B
+78,,,,,,,,78,,,,78,The Hitman,C
+79,,,,,,,,79,,,,79,City of Industry,B
+80,,,,,,,,80,,,,80,Sinners,A
+81,,,,,,,,81,,,,81,New Life,B
+82,,,,,,,,82,,,,82,Havoc,C
+83,,,,,,,,83,,,,83,Deadfall,Schlock
+84,,,,,,,,84,,,,84,Surrogates,C
+85,,,,,,,,85,,,,85,The Order,B
+86,,,,,,,,86,,,,86,Boy Kills World,C`;
+        
+        // --- DATA MANAGEMENT ---
+        const saveData = () => {
+            localStorage.setItem('mediaTrackerData', JSON.stringify(mediaData));
+        };
+        
+        const parseCSVToJSONForStorage = (csv) => {
+            const lines = csv.split('\n').filter(line => line.trim() !== '' && !line.startsWith('No.'));
+            
+            const data = { games: [], books: [], shows: [], movies: [] };
+            let idCounter = Date.now() + Math.random(); 
+
+            lines.forEach(line => {
+                const values = line.split(',');
+                // Games (cols 0-5)
+                if (values[0] && values[1]) {
+                    const dateParts = values[2].split('/');
+                    const formattedDate = dateParts.length === 3 ? `${dateParts[2]}-${dateParts[0].padStart(2, '0')}-${dateParts[1].padStart(2, '0')}` : '';
+                    data.games.push({ id: idCounter++, no: values[0], title: values[1], date: formattedDate, platform: values[3], hours: values[4], score: values[5] });
+                }
+                // Books (cols 7-10)
+                if (values[7] && values[8]) {
+                    const dateParts = values[9].split('/');
+                    const formattedDate = dateParts.length === 3 ? `${dateParts[2]}-${dateParts[0].padStart(2, '0')}-${dateParts[1].padStart(2, '0')}` : '';
+                    data.books.push({ id: idCounter++, no: values[7], title: values[8], date: formattedDate, score: values[10] });
+                }
+                // TV Shows (cols 12-14)
+                if (values[12] && values[13]) {
+                    data.shows.push({ id: idCounter++, no: values[12], title: values[13], score: values[14] });
+                }
+                // Movies (cols 16-18)
+                if (values[16] && values[17]) {
+                    data.movies.push({ id: idCounter++, no: values[16], title: values[17], score: values[18] });
+                }
+            });
+            return data;
+        };
+
+        const loadData = () => {
+            const savedData = localStorage.getItem('mediaTrackerData');
+            if (savedData) {
+                mediaData = JSON.parse(savedData);
+            } else {
+                // Load default data from full CSVs if nothing is saved
+                mediaData = {
+                    ernie: parseCSVToJSONForStorage(ernieDataCSV),
+                    jon: parseCSVToJSONForStorage(jonDataCSV),
+                    gameclub: [
+                        { id: Date.now()+1, title: 'Castlevania Lords of Shadow', jon: 'FALSE', ernie: 'FALSE' },
+                        { id: Date.now()+2, title: 'Tomb Raider Anniversary', jon: 'FALSE', ernie: 'FALSE' },
+                        { id: Date.now()+3, title: 'Final Fantasy XIII', jon: 'FALSE', ernie: 'FALSE' },
+                        { id: Date.now()+4, title: 'Lies of P', jon: 'TRUE', ernie: 'FALSE' },
+                        { id: Date.now()+5, title: 'Mad Max', jon: 'FALSE', ernie: 'FALSE' },
+                        { id: Date.now()+6, title: 'Parasite Eve II', jon: 'FALSE', ernie: 'TRUE' },
+                        { id: Date.now()+7, title: 'Dino Crisis', jon: 'FALSE', ernie: 'TRUE' },
+                    ],
+                    coop: [
+                        { id: Date.now()+8, title: 'Dying Light 2', finished: 'FALSE' },
+                        { id: Date.now()+9, title: 'A Way Out', finished: 'TRUE' },
+                        { id: Date.now()+10, title: 'Ghost Recon Breakpoint', finished: 'FALSE' },
+                        { id: Date.now()+11, title: 'MGS PeaceWalker', finished: 'FALSE' },
+                        { id: Date.now()+12, title: 'Diablo II Remastered', finished: 'FALSE' },
+                        { id: Date.now()+13, title: 'Split Fiction', finished: 'TRUE' },
+                        { id: Date.now()+14, title: 'Darksiders Genesis', finished: 'FALSE' },
+                    ]
+                };
+                saveData();
+            }
+        };
+
+        // --- UTILITY FUNCTIONS ---
+        const getScoreClass = (score) => {
+            if (!score) return '';
+            const numScore = convertScoreToNumber(score);
+            if (numScore >= 9.5) return 'score-s';
+            if (numScore >= 8.5) return 'score-a';
+            if (numScore >= 7.5) return 'score-b';
+            if (numScore >= 6.5) return 'score-c';
+            if (numScore >= 5.5) return 'score-d';
+            return 'score-f';
+        };
+
+        const convertScoreToNumber = (score) => {
+            if (!score) return 0;
+            const s = score.toString().toLowerCase().trim();
+            if (!isNaN(s)) return parseFloat(s);
+            const scoreMap = { 's': 10, 'a+': 9.8, 'a': 9.5, 'a-': 9.2, 'b+': 8.8, 'b': 8.5, 'b-': 8.2, 'c+': 7.8, 'c': 7.5, 'c-': 7.2, 'd+': 6.8, 'd': 6.5, 'd-': 6.2, 'f': 5.0, 'schlock': 4.0 };
+            return scoreMap[s] || 0;
+        };
+        
+        // --- MODAL & FORM HANDLING ---
+        const modal = document.getElementById('media-modal');
+        const form = document.getElementById('media-form');
+        const recommendationModal = document.getElementById('recommendation-modal');
+
+        const openModal = (person, category, itemId = null) => {
+            form.reset();
+            document.getElementById('form-person').value = person;
+            document.getElementById('form-category').value = category;
+            document.getElementById('form-item-id').value = itemId || '';
+
+            // Hide all groups first
+            ['form-title-group', 'form-score-group', 'form-date-group', 'form-platform-group', 'form-hours-group', 'form-gameclub-group', 'form-coop-group'].forEach(id => document.getElementById(id).style.display = 'none');
+            
+            // Show relevant groups
+            document.getElementById('form-title-group').style.display = 'block';
+
+            if (person === 'gameclub') {
+                if (category === 'gameclub') {
+                    document.getElementById('form-gameclub-group').style.display = 'block';
+                } else { // coop
+                    document.getElementById('form-coop-group').style.display = 'block';
+                }
+            } else {
+                // Standard media item
+                document.getElementById('form-score-group').style.display = 'block';
+                const isGame = category === 'games';
+                document.getElementById('form-platform-group').style.display = isGame ? 'block' : 'none';
+                document.getElementById('form-hours-group').style.display = isGame ? 'block' : 'none';
+                document.getElementById('form-date-group').style.display = 'block';
+            }
+
+
+            if (itemId) {
+                document.getElementById('modal-title').innerText = 'Edit Item';
+                const dataList = person === 'gameclub' ? mediaData[category] : mediaData[person][category];
+                const item = dataList.find(i => i.id == itemId);
+                if (item) {
+                    document.getElementById('form-title').value = item.title || '';
+                    if (person !== 'gameclub') {
+                        document.getElementById('form-score').value = item.score || '';
+                        if(item.date) document.getElementById('form-date').value = item.date;
+                        if(category === 'games') {
+                            document.getElementById('form-platform').value = item.platform || '';
+                            document.getElementById('form-hours').value = item.hours || '';
+                        }
+                    } else if (category === 'gameclub') {
+                        document.getElementById('form-jon-finished').checked = item.jon === 'TRUE';
+                        document.getElementById('form-ernie-finished').checked = item.ernie === 'TRUE';
+                    } else { // coop
+                        document.getElementById('form-coop-finished').checked = item.finished === 'TRUE';
+                    }
+                }
+            } else {
+                document.getElementById('modal-title').innerText = 'Add New Item';
+            }
+            modal.classList.remove('hidden');
+        };
+
+        const closeModal = () => {
+            modal.classList.add('hidden');
+        };
+
+        const handleFormSubmit = (e) => {
+            e.preventDefault();
+            const person = document.getElementById('form-person').value;
+            const category = document.getElementById('form-category').value;
+            const itemId = document.getElementById('form-item-id').value;
+
+            let newItemData = { title: document.getElementById('form-title').value };
+            let dataList;
+
+            if (person === 'gameclub') {
+                dataList = mediaData[category];
+                if (category === 'gameclub') {
+                    newItemData.jon = document.getElementById('form-jon-finished').checked ? 'TRUE' : 'FALSE';
+                    newItemData.ernie = document.getElementById('form-ernie-finished').checked ? 'TRUE' : 'FALSE';
+                } else { // coop
+                    newItemData.finished = document.getElementById('form-coop-finished').checked ? 'TRUE' : 'FALSE';
+                }
+            } else {
+                dataList = mediaData[person][category];
+                newItemData.score = document.getElementById('form-score').value;
+                newItemData.date = document.getElementById('form-date').value;
+                newItemData.platform = document.getElementById('form-platform').value;
+                newItemData.hours = document.getElementById('form-hours').value;
+            }
+
+            if (itemId) {
+                const itemIndex = dataList.findIndex(i => i.id == itemId);
+                if (itemIndex > -1) {
+                    const oldItem = dataList[itemIndex];
+                    dataList[itemIndex] = { ...oldItem, ...newItemData };
+                }
+            } else {
+                newItemData.id = Date.now();
+                if (!dataList) dataList = [];
+                dataList.push(newItemData);
+            }
+            
+            saveData();
+            rerenderAll();
+            closeModal();
+        };
+
+        const deleteItem = (person, category, itemId) => {
+            if (confirm('Are you sure you want to delete this item?')) {
+                const dataList = person === 'gameclub' ? mediaData[category] : mediaData[person][category];
+                const updatedList = dataList.filter(i => i.id != itemId);
+                
+                if (person === 'gameclub') {
+                    mediaData[category] = updatedList;
+                } else {
+                    mediaData[person][category] = updatedList;
+                }
+
+                saveData();
+                rerenderAll();
+            }
+        };
+        
+        const resetData = () => {
+            if (confirm('Are you sure you want to reset all data? This will delete any items you have added or edited and restore the original lists.')) {
+                localStorage.removeItem('mediaTrackerData');
+                location.reload();
+            }
+        };
+
+        // --- AI RECOMMENDATIONS ---
+        const openRecommendationModal = () => {
+            const contentDiv = document.getElementById('recommendation-content');
+            contentDiv.innerHTML = '<div class="spinner"></div><p class="text-center text-gray-400">Getting recommendations from Gemini...</p>';
+            recommendationModal.classList.remove('hidden');
+        };
+
+        const closeRecommendationModal = () => {
+            recommendationModal.classList.add('hidden');
+        };
+
+        const getRecommendations = async (person) => {
+            openRecommendationModal();
+
+            const personData = mediaData[person];
+            const threshold = 8.5; // B+ or higher
+
+            const topGames = (personData.games || []).filter(item => convertScoreToNumber(item.score) >= threshold).map(item => item.title);
+            const topMovies = (personData.movies || []).filter(item => convertScoreToNumber(item.score) >= threshold).map(item => item.title);
+            const topShows = (personData.shows || []).filter(item => convertScoreToNumber(item.score) >= threshold).map(item => item.title);
+
+            if (topGames.length === 0 && topMovies.length === 0 && topShows.length === 0) {
+                document.getElementById('recommendation-content').innerHTML = `<p>Not enough highly-rated media to generate recommendations. Please rate some items B+ or higher!</p>`;
+                return;
+            }
+
+            const prompt = `Based on this list of highly-rated media, please recommend 3 new items for each category that this person might enjoy.
+
+            Highly-rated Games: ${topGames.join(', ') || 'None'}
+            Highly-rated Movies: ${topMovies.join(', ') || 'None'}
+            Highly-rated TV Shows: ${topShows.join(', ') || 'None'}
+
+            Provide the recommendations in a JSON object format.`;
+            
+            let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+            const payload = { 
+                contents: chatHistory,
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            "games": { "type": "ARRAY", "items": { "type": "STRING" } },
+                            "movies": { "type": "ARRAY", "items": { "type": "STRING" } },
+                            "shows": { "type": "ARRAY", "items": { "type": "STRING" } }
+                        }
+                    }
+                }
+            };
+            const apiKey = ""; // Provided by the environment
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed with status ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0]) {
+                    const jsonText = result.candidates[0].content.parts[0].text;
+                    const recommendations = JSON.parse(jsonText);
+                    displayRecommendations(recommendations);
+                } else {
+                    throw new Error("Unexpected API response format.");
+                }
+
+            } catch (error) {
+                console.error("Error fetching recommendations:", error);
+                document.getElementById('recommendation-content').innerHTML = `<p class="text-red-400">Sorry, something went wrong while getting recommendations. Please try again later.</p>`;
+            }
+        };
+
+        const displayRecommendations = (recs) => {
+            const contentDiv = document.getElementById('recommendation-content');
+            let html = '';
+
+            const createRecList = (title, items) => {
+                if (!items || items.length === 0) return '';
+                return `
+                    <div class="mb-4">
+                        <h3 class="font-bold text-lg mb-2">${title}</h3>
+                        <ul class="list-disc list-inside space-y-1 text-gray-300">
+                            ${items.map(item => `<li>${item}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            };
+
+            html += createRecList('Recommended Games', recs.games);
+            html += createRecList('Recommended Movies', recs.movies);
+            html += createRecList('Recommended TV Shows', recs.shows);
+
+            contentDiv.innerHTML = html;
+        };
+
+        // --- RENDER FUNCTIONS ---
+        const createCard = (item, type, person, category) => {
+            if (!item.title || item.title.trim() === '') return '';
+            return `
+                <div class="card rounded-lg p-4 flex flex-col justify-between">
+                    <div>
+                        <p class="text-sm text-gray-400">${item.date || type}</p>
+                        <h3 class="font-semibold mt-1">${item.title}</h3>
+                        ${item.platform ? `<p class="text-xs text-gray-500 mt-1">${item.platform}${item.hours ? ` - ${item.hours} hrs` : ''}</p>` : ''}
+                    </div>
+                    ${item.score ? `<div class="mt-4 self-start"><span class="score ${getScoreClass(item.score)}">${item.score}</span></div>` : ''}
+                    <div class="card-actions">
+                        <button class="card-action-btn" onclick="openModal('${person}', '${category}', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button>
+                        <button class="card-action-btn" onclick="deleteItem('${person}', '${category}', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button>
+                    </div>
+                </div>`;
+        };
+        
+        const createSection = (title, data, type, person) => {
+            const category = type.toLowerCase().replace(/ & /g, '').replace(/ /g, '');
+            const hasDate = data.some(item => item.date);
+            return `
+                <div class="mb-12">
+                    <div class="flex flex-wrap justify-between items-center border-b-2 border-gray-700 pb-2 mb-6 gap-4">
+                        <h2 class="text-2xl font-bold">${title} (${data.length})</h2>
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-2" id="sort-controls-${person}-${category}">
+                                <span class="text-xs text-gray-400 mr-2">Sort by:</span>
+                                <button class="sort-btn" onclick="sortAndRerender('${person}', '${category}', 'title', this)">Title</button>
+                                <button class="sort-btn" onclick="sortAndRerender('${person}', '${category}', 'score', this)">Score</button>
+                                ${hasDate ? `<button class="sort-btn" onclick="sortAndRerender('${person}', '${category}', 'date', this)">Date</button>` : ''}
+                            </div>
+                            <button class="btn-primary text-sm py-1 px-3" onclick="openModal('${person}', '${category}')">+ Add</button>
+                        </div>
+                    </div>
+                    <div id="${person}-${category}-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        ${data.map(item => createCard(item, title, person, category)).join('')}
+                    </div>
+                </div>`;
+        };
+        
+        const renderOverview = () => {
+            const container = document.getElementById('overview');
+            const ernieTotals = {
+                games: mediaData.ernie.games?.length || 0,
+                movies: mediaData.ernie.movies?.length || 0,
+                shows: mediaData.ernie.shows?.length || 0,
+                books: mediaData.ernie.books?.length || 0,
+            };
+             const jonTotals = {
+                games: mediaData.jon.games?.length || 0,
+                movies: mediaData.jon.movies?.length || 0,
+                shows: mediaData.jon.shows?.length || 0,
+                books: mediaData.jon.books?.length || 0,
+            };
+
+            container.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+                    <!-- Ernie's Totals -->
+                    <div class="card rounded-lg p-6">
+                        <h3 class="text-xl font-semibold mb-4 text-center">Ernie's Totals</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="text-center p-2 rounded-lg bg-gray-800/50">
+                                <p class="text-4xl font-bold">${ernieTotals.games}</p>
+                                <p class="text-sm text-gray-400">Games</p>
+                            </div>
+                            <div class="text-center p-2 rounded-lg bg-gray-800/50">
+                                <p class="text-4xl font-bold">${ernieTotals.movies}</p>
+                                <p class="text-sm text-gray-400">Movies</p>
+                            </div>
+                            <div class="text-center p-2 rounded-lg bg-gray-800/50">
+                                <p class="text-4xl font-bold">${ernieTotals.shows}</p>
+                                <p class="text-sm text-gray-400">Shows</p>
+                            </div>
+                            <div class="text-center p-2 rounded-lg bg-gray-800/50">
+                                <p class="text-4xl font-bold">${ernieTotals.books}</p>
+                                <p class="text-sm text-gray-400">Books</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Jon's Totals -->
+                    <div class="card rounded-lg p-6">
+                        <h3 class="text-xl font-semibold mb-4 text-center">Jon's Totals</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="text-center p-2 rounded-lg bg-gray-800/50">
+                                <p class="text-4xl font-bold">${jonTotals.games}</p>
+                                <p class="text-sm text-gray-400">Games</p>
+                            </div>
+                            <div class="text-center p-2 rounded-lg bg-gray-800/50">
+                                <p class="text-4xl font-bold">${jonTotals.movies}</p>
+                                <p class="text-sm text-gray-400">Movies</p>
+                            </div>
+                            <div class="text-center p-2 rounded-lg bg-gray-800/50">
+                                <p class="text-4xl font-bold">${jonTotals.shows}</p>
+                                <p class="text-sm text-gray-400">Shows</p>
+                            </div>
+                            <div class="text-center p-2 rounded-lg bg-gray-800/50">
+                                <p class="text-4xl font-bold">${jonTotals.books}</p>
+                                <p class="text-sm text-gray-400">Books</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card rounded-lg p-6">
+                     <h2 class="text-2xl font-bold mb-4 text-center">Average Scores by Category</h2>
+                     <canvas id="score-chart"></canvas>
+                </div>
+            `;
+            renderAverageScoreChart();
+        };
+
+        const renderPersonPage = (containerId, data) => {
+            const container = document.getElementById(containerId);
+            const personName = containerId.charAt(0).toUpperCase() + containerId.slice(1);
+            let recommendationButtonHTML = `
+                <div class="mb-8 text-center">
+                    <button class="btn-primary" onclick="getRecommendations('${containerId}')">✨ Get AI Recommendations for ${personName}</button>
+                </div>
+            `;
+            container.innerHTML = recommendationButtonHTML + `
+                ${createSection('Video Games', data.games || [], 'Games', containerId)}
+                ${createSection('Movies', data.movies || [], 'Movies', containerId)}
+                ${createSection('TV Shows', data.shows || [], 'Shows', containerId)}
+                ${createSection('Books & Comics', data.books || [], 'Books', containerId)}`;
+        };
+        
+        const renderGameClub = () => {
+            const container = document.getElementById('gameclub');
+            const createGameClubRow = (item) => `<li class="card list-item rounded-lg p-4 flex items-center justify-between"><span class="font-semibold">${item.title}</span><div class="flex items-center gap-4"><span class="flex items-center gap-2 text-sm">Jon: ${item.jon === 'TRUE' ? '✅' : '❌'}</span><span class="flex items-center gap-2 text-sm">Ernie: ${item.ernie === 'TRUE' ? '✅' : '❌'}</span></div><div class="card-actions"><button class="card-action-btn" onclick="openModal('gameclub', 'gameclub', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button><button class="card-action-btn" onclick="deleteItem('gameclub', 'gameclub', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button></div></li>`;
+            const createCoopRow = (item) => `<li class="card list-item rounded-lg p-4 flex items-center justify-between"><span class="font-semibold">${item.title}</span><span class="text-sm">${item.finished === 'TRUE' ? '✅ Finished' : '❌ In Progress'}</span><div class="card-actions"><button class="card-action-btn" onclick="openModal('gameclub', 'coop', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button><button class="card-action-btn" onclick="deleteItem('gameclub', 'coop', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button></div></li>`;
+            container.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-8"><div><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">GameClub List</h2><button class="btn-primary text-sm py-1 px-3" onclick="openModal('gameclub', 'gameclub')">+ Add</button></div><ul class="space-y-3">${(mediaData.gameclub || []).map(createGameClubRow).join('')}</ul></div><div><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">Co-Op List</h2><button class="btn-primary text-sm py-1 px-3" onclick="openModal('gameclub', 'coop')">+ Add</button></div><ul class="space-y-3">${(mediaData.coop || []).map(createCoopRow).join('')}</ul></div></div>`;
+        }
+
+        const sortAndRerender = (person, category, sortBy, clickedButton) => {
+            if (clickedButton) {
+                const controlsContainer = document.getElementById(`sort-controls-${person}-${category}`);
+                controlsContainer.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('sort-btn-active'));
+                clickedButton.classList.add('sort-btn-active');
+            }
+            const dataToSort = mediaData[person][category];
+            dataToSort.sort((a, b) => {
+                if (sortBy === 'title') return a.title.localeCompare(b.title);
+                if (sortBy === 'score') return convertScoreToNumber(b.score) - convertScoreToNumber(a.score);
+                if (sortBy === 'date') { if (!a.date) return 1; if (!b.date) return -1; return new Date(b.date) - new Date(a.date); }
+                return 0;
+            });
+            const grid = document.getElementById(`${person}-${category}-grid`);
+            grid.innerHTML = dataToSort.map(item => createCard(item, category, person, category)).join('');
+        };
+
+        const rerenderAll = () => {
+            renderOverview();
+            renderPersonPage('ernie', mediaData.ernie);
+            renderPersonPage('jon', mediaData.jon);
+            renderGameClub();
+        };
+
+        const showTab = (tabId) => {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+            document.querySelectorAll('.tab').forEach(button => button.classList.remove('tab-active'));
+            document.querySelector(`.tab[onclick="showTab('${tabId}')"]`).classList.add('tab-active');
+        };
+
+        const calculateCategoryAverages = (personData) => {
+            const categories = ['games', 'movies', 'shows', 'books'];
+            const averages = {};
+            categories.forEach(cat => {
+                const items = personData[cat] || [];
+                const scoredItems = items.filter(item => item.score && item.score.trim() !== '');
+                if (scoredItems.length === 0) {
+                    averages[cat] = 0;
+                    return;
+                }
+                const totalScore = scoredItems.reduce((sum, item) => sum + convertScoreToNumber(item.score), 0);
+                averages[cat] = (totalScore / scoredItems.length).toFixed(2);
+            });
+            return averages;
+        };
+
+        const renderAverageScoreChart = () => {
+            if (scoreChartInstance) {
+                scoreChartInstance.destroy();
+            }
+            const ctx = document.getElementById('score-chart').getContext('2d');
+            const ernieAverages = calculateCategoryAverages(mediaData.ernie);
+            const jonAverages = calculateCategoryAverages(mediaData.jon);
+            
+            const isLightMode = document.documentElement.classList.contains('light-mode');
+            const gridColor = isLightMode ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)';
+            const tickColor = isLightMode ? '#4b5563' : '#9ca3af';
+
+            scoreChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Games', 'Movies', 'Shows', 'Books'],
+                    datasets: [{
+                        label: 'Ernie',
+                        data: [ernieAverages.games, ernieAverages.movies, ernieAverages.shows, ernieAverages.books],
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1
+                    }, {
+                        label: 'Jon',
+                        data: [jonAverages.games, jonAverages.movies, jonAverages.shows, jonAverages.books],
+                        backgroundColor: 'rgba(16, 185, 129, 0.7)',
+                        borderColor: 'rgba(16, 185, 129, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 10,
+                            grid: { color: gridColor },
+                            ticks: { color: tickColor }
+                        },
+                        x: {
+                            grid: { color: 'transparent' },
+                            ticks: { color: tickColor }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: tickColor }
+                        }
+                    }
+                }
+            });
+        };
+
+        // --- THEME TOGGLE LOGIC ---
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const sunIcon = document.getElementById('theme-icon-sun');
+        const moonIcon = document.getElementById('theme-icon-moon');
+        const root = document.documentElement;
+
+        const updateThemeIcon = () => {
+            if (root.classList.contains('light-mode')) {
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
+            } else {
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
+            }
+        };
+
+        const toggleTheme = () => {
+            root.classList.toggle('light-mode');
+            if (root.classList.contains('light-mode')) {
+                localStorage.setItem('theme', 'light');
+            } else {
+                localStorage.setItem('theme', 'dark');
+            }
+            updateThemeIcon();
+            // Re-render chart with new theme colors
+            if (document.getElementById('overview').classList.contains('hidden') === false) {
+                 renderAverageScoreChart();
+            }
+        };
+        
+        const applyInitialTheme = () => {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'light') {
+                root.classList.add('light-mode');
+            } else {
+                root.classList.remove('light-mode');
+            }
+            updateThemeIcon();
+        }
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            rerenderAll();
+            showTab('overview');
+            form.addEventListener('submit', handleFormSubmit);
+            
+            // Theme and Reset Button Init
+            themeToggleBtn.addEventListener('click', toggleTheme);
+            applyInitialTheme();
+        });
+    </script>
+</body>
+</html>
