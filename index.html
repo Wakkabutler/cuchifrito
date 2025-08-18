@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2025 Media Tracker - Editable</title>
+    <title>2025 Media Tracker - Online</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -62,8 +62,6 @@
         .score-c { background-color: #f97316; color: #ffffff; }
         .score-d { background-color: #ef4444; color: #ffffff; }
         .score-f { background-color: #7f1d1d; color: #ffffff; }
-        .progress-bar { background-color: #374151; }
-        .progress-bar-inner { background-color: #3b82f6; }
         .fade-in { animation: fadeIn 0.5s ease-in-out; }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
@@ -104,21 +102,6 @@
         #theme-toggle:hover {
             background-color: var(--input-bg);
         }
-        
-        /* Spinner for AI Modal */
-        .spinner {
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top: 4px solid #3b82f6;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 2rem auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
     </style>
     <script>
         // Apply theme on initial load to prevent flash
@@ -134,6 +117,9 @@
     <div class="max-w-7xl mx-auto">
         <header class="text-center mb-8 relative">
              <div class="absolute top-0 right-0 flex items-center gap-2">
+                <button id="reset-data-btn" title="Clear saved changes and reset to original data" class="text-xs bg-red-800 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-full">
+                    Reset Data
+                </button>
                 <button id="theme-toggle" title="Toggle theme">
                     <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
                     <svg id="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
@@ -190,6 +176,10 @@
                         <label for="form-hours" class="block text-sm font-medium text-gray-300 mb-1">Hours</label>
                         <input type="number" id="form-hours" class="form-input">
                     </div>
+                    <div id="form-imdb-group" class="hidden">
+                        <label for="form-imdb" class="block text-sm font-medium text-gray-300 mb-1">IMDb Link (optional)</label>
+                        <input type="url" id="form-imdb" class="form-input">
+                    </div>
                     <!-- GameClub Specific Fields -->
                     <div id="form-gameclub-group" class="hidden space-y-2">
                          <label class="block text-sm font-medium text-gray-300 mb-1">Finished Status</label>
@@ -218,200 +208,398 @@
             </form>
         </div>
     </div>
-    
-    <!-- AI Recommendations Modal -->
-    <div id="recommendation-modal" class="modal-overlay hidden">
-        <div class="modal-content fade-in">
-            <h2 id="recommendation-modal-title" class="text-2xl font-bold mb-6">✨ AI Recommendations</h2>
-            <div id="recommendation-content">
-                <!-- Spinner will be shown here -->
-            </div>
-            <div class="mt-8 flex justify-end">
-                <button type="button" class="btn-secondary" onclick="closeRecommendationModal()">Close</button>
-            </div>
-        </div>
-    </div>
 
-    <script>
+    <script type="module">
+        // --- FIREBASE IMPORTS ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, onSnapshot, addDoc, setDoc, deleteDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
         // --- DATA STORE ---
-        let mediaData = { ernie: {}, jon: {} };
+        let mediaData = { ernie: {}, jon: {}, gameclub: [], coop: [] };
         let scoreChartInstance; // To hold the chart instance
+        let db, auth; // Firebase instances
 
         // Original CSV data for initial population
         const ernieDataCSV = `No.,Title,Date Finished,Platform,Hours,Score,,No.,Title,Date Finished,Score,,No.,Title,Score,,No.,Title,Score
 1,Metaphor: ReFantazio,1/23/2025,Xbox S|X,130,10,,1,Uzumaki by Junji Ito,3/12/2025,A,,1,Mindhunter S1,A,,1,Venom: The Last Dance,D-
 2,Shadow Generations,2/8/2025,Steamdeck,5,8.5,,2,All You Need is Kill by Hiroshi Sakurazaka,4/3/2025,A,,2,Mindhunter S2,A,,2,Speak No Evil,B-
 3,Sonic Generations ,2/23/2025,Steamdeck,6,8.5,,3,The Cabin at the End of the World by Paul G. Tremblay,6/22/2025,C-,,3,Severance S1,S,,3,Heretic,A+
-4,Metal Gear Solid,2/23/2025,Anbernic,8,10,,4,,,,,4,Castlevania S1,A+,,4,Emilia Pérez,C-
-5,A Way Out (With Jon),3/2/2025,Xbox S|X,7,8,,5,,,,,5,Castlevania S2,A+,,5,Sonic 3,A
-6,Dino Crisis,3/2/2025,PS5,8,8,,6,,,,,6,Castlevania S3,A,,6,The Crow,A
-7,Silent Hill,3/16/2025,PS5,6,9,,7,,,,,7,Castlevania S4,A,,7,The Crow: City of Angels,D
-8,Silent Hill 3,3/23/2025,PS5,7,8,,8,,,,,8,Castlevania Nocturne,A,,8,The Crow: Salvation,D
-9,The Thing,4/13/2025,Steamdeck,10,7,,9,,,,,9,Fallout,S,,9,The Crow: Wicked Prayer,F
-10,Alan Wake 2,4/20/2025,PS5,20,9.5,,10,,,,,10,X-Men 97,A,,10,Final Fantasy Advent Children,B+
-11,Clock Tower,4/28/2025,Anbernic,3,8,,11,,,,,11,The Boys S4,A,,11,The Last Ronin,A
-12,Parasite Eve,5/12/2025,PS5,10,9,,12,,,,,12,The Bear S1,A,,12,The Last Ronin Part 2,A
-13,Parasite Eve II,5/26/2025,PS5,15,8,,13,,,,,13,The Bear S2,A,,13,The Strangers: Chapter 1,C
-14,Lollipop Chainsaw,6/1/2025,PS5,8,7,,14,,,,,14,The Bear S3,A,,14,The Strangers: Chapter 2,B
-15,Final Fantasy VII Rebirth,6/29/2025,PS5,100,10,,15,,,,,15,Law & Order SVU S7,B,,15,The Strangers: Chapter 3,A
-16,Kingdom Hearts IV,7/13/2025,PS5,40,9,,16,,,,,16,Interview with the Vampire S2,A,,16,The Substance,A+
-17,Elden Ring: Shadow of the Erdtree,7/20/2025,PS5,80,10,,17,,,,,17,Daredevil S1,A,,17,Drive,A
+4,Metal Gear Solid,2/23/2025,Anbernic,8,10,,4,Gyo,7/2/2025,B,,4,Castlevania S1,A+,,4,Emilia Pérez,C-
+5,A Way Out (With Jon),3/2/2025,Xbox S|X,7,8,,5,Shiver,7/14/2025,A,,5,Castlevania S2,A+,,5,Sonic 3,A
+6,Dino Crisis,3/2/2025,PS5,8,8,,6,Tombs,7/28/2025,A,,6,Castlevania S3,A,,6,The Crow,A
+7,Silent Hill,3/16/2025,PS5,6,9,,7,No Longer Human,8/4/2025,S,,7,Castlevania S4,A,,7,The Crow: City of Angels,D
+8,Silent Hill 3,3/23/2025,PS5,7,8,,8,The Dissolving Classroom,8/11/2025,B+,,8,Castlevania Nocturne,A,,8,The Crow: Salvation,D
+9,The Thing,4/13/2025,Steamdeck,10,7,,9,Fragments of Horror,8/18/2025,A-,,9,Fallout,S,,9,The Crow: Wicked Prayer,F
+10,Alan Wake 2,4/20/2025,PS5,20,9.5,,10,Smashed,8/25/2025,A,,10,X-Men 97,A,,10,Final Fantasy Advent Children,B+
+11,Clock Tower,4/28/2025,Anbernic,3,8,,11,Deserter,9/2/2025,B,,11,The Boys S4,A,,11,The Last Ronin,A
+12,Parasite Eve,5/12/2025,PS5,10,9,,12,Lovesickness,9/9/2025,A,,12,The Bear S1,A,,12,The Last Ronin Part 2,A
+13,Parasite Eve II,5/26/2025,PS5,15,8,,13,The Liminal Zone,9/16/2025,A,,13,The Bear S2,A,,13,The Strangers: Chapter 1,C
+14,Lollipop Chainsaw,6/1/2025,PS5,8,7,,14,Mimi's Tales of Terror,9/23/2025,B,,14,The Bear S3,A,,14,The Strangers: Chapter 2,B
+15,Final Fantasy VII Rebirth,6/29/2025,PS5,100,10,,15,Venus in the Blind Spot,9/30/2025,A,,15,Law & Order SVU S7,B,,15,The Strangers: Chapter 3,A
+16,Kingdom Hearts IV,7/13/2025,PS5,40,9,,16,Black Paradox,10/7/2025,B+,,16,Interview with the Vampire S2,A,,16,The Substance,A+
+17,Elden Ring: Shadow of the Erdtree,7/20/2025,PS5,80,10,,17,Sensor,10/14/2025,B,,17,Daredevil S1,A,,17,Drive,A
 18,Death Stranding 2: On the Beach,7/29/2025,PS5,135,9,,18,,,,,18,The White Lotus S1,A+,,18,Monster Hunter,C+
-19,Still Wakes the Deep: Siren's Rest,8/4/2025,Xbox S|X,3,8,,19,,,,,19,The White Lotus S2,B,,19,The Gorge,B+`;
+19,Still Wakes the Deep: Siren's Rest,8/4/2025,Xbox S|X,3,8,,19,,,,,19,The White Lotus S2,B,,19,The Gorge,B+
+20,Metroid Prime 4,8/11/2025,Switch,25,9.5,,20,,,,,20,Law & Order SVU S8,B,,20,MaXXXine,A+
+21,Hollow Knight Silksong,8/18/2025,Switch,40,10,,21,,,,,21,Law & Order SVU S9,B,,21,Transformers One,B
+22,Fable,8/25/2025,Xbox S|X,50,9,,22,,,,,22,Law & Order SVU S10,B,,22,Mufasa: The Lion King,D
+23,Perfect Dark,9/2/2025,Xbox S|X,15,8.5,,23,,,,,23,Law & Order SVU S11,C+,,23,Nosferatu,B
+24,South of Midnight,9/9/2025,Xbox S|X,20,9,,24,,,,,24,Andor S2,A+,,24,Superman Red Son,A
+25,Clair Obscur: Expedition 33 ,9/16/2025,Xbox S|X,44,10,,25,,,,,25,Yellowjackets S3,B-,,25,Knock at the Cabin,B
+26,Shadow Hearts,9/23/2025,Steamdeck,23,7,,26,,,,,26,Mad Bull 34,C+,,26,Tusk,F
+27,Silent Hill,9/30/2025,Steamdeck,11,8,,27,,,,,27,Law & Order SVU S12,B-,,27,Ellysiun,B-
+28,Death Stranding 2: On the Beach,,,,,,,,,,28,Law & Order SVU S13,A,,28,Thunderbolts*,B-
+29,Fatal Frame,10/7/2025,Steamdeck,12,8.5,,29,,,,,29,Law & Order SVU S14,B+,,29,From the World of John Wick: Ballerina,C
+30,Fatal Frame 2,10/14/2025,Steamdeck,14,9.5,,30,,,,,30,Law & Order SVU S15,B,,30,Jurassic World,B-
+31,Fatal Frame 3,10/21/2025,Steamdeck,15,9,,31,,,,,31,Law & Order SVU S16,A-,,31,The Batman Part II,A+
+32,Fatal Frame 4,10/28/2025,Steamdeck,13,8.5,,32,,,,,32,Law & Order SVU S17,B,,32,The Bride!,A
+33,Fatal Frame 5,11/4/2025,Steamdeck,16,8,,33,,,,,33,Law & Order SVU S18,C,,33,Joker: Folie à Deux,A
+34,Judas,11/11/2025,Xbox S|X,18,9,,34,,,,,34,Law & Order SVU S19,D,,34,The War of the Rohirrim,B+
+35,BioShock 4,11/18/2025,Xbox S|X,22,9.5,,35,,,,,35,Law & Order SVU S20,F,,35,The Fantastic Four,B`;
 
-        const jonDataCSV = `No.,Title,Date Finished,Platform,Hours,Score,,No.,Title,Date Finished,Score,,No.,Shows & Anime,Score,,No.,Movies,Score
-1,Outer Worlds (PSPLUS),1/10/2025,PS5,28,8,,1,Tomie,2/19/2025,B,,1,Vinland Saga,A,,1,Den of Thieves Pantera,B
-2,Shadowrun Returns (PSPLUS),1/18/2025,PS5,22,7,,2,Neuromancer,2/23/2025,A,,2,Sakamoto Days,B,,2,The Silent Hour,C
-3,Dishonored (Gamepass),1/25/2025,XBOX,11,9,,3,The Dreams In The Witch House,3/5/2025,A,,3,American Primeval,A,,3,The Rock,A
-4,Silent Hill 2 Remake (Gamefly),2/1/2025,PS5,18,9,,4,The Pentagon's Brain,7/11/2025,A,,4,Onimusha,B,,4,American Star,C
-5,Slitterhead (Gamefly),2/22/2025,PS5,15,7,,5,Department of Truth Vol 5,7/13/2025,A,,5,Alice In Borderlands,A,,5,Redemption,B
-6,No Way Out (Gamepass),3/2/2025,XBOX,7,8,,6,,,,6,The Boys,A,,6,The Killer,A
-7,Split/Second (Gamepass),3/8/2025,XBOX,12,9,,7,,,,7,Invincible,A,,7,The Raid,A
-8,Terminator Resistance (PSPLUS),3/15/2025,PS5,16,8,,8,,,,8,Scavengers Reign,A,,8,The Raid 2,A
-9,Robocop (Gamefly),3/29/2025,PS5,18,9,,9,,,,9,Delicious In Dungeon,B,,9,Dredd,A
-10,Evil West (PSPLUS),4/5/2025,PS5,14,8,,10,,,,10,Solo Leveling,B,,10,Upgrade,A
-11,Dead Island 2 (Gamepass),4/12/2025,XBOX,25,8,,11,,,,11,Cyberpunk Edgerunners,A,,11,District 9,A
-12,Stellar Blade (Gamefly),5/3/2025,PS5,30,9,,12,,,,12,Arcane,A,,12,Hardcore Henry,B
-13,Rise of The Ronin (Gamefly),5/17/2025,PS5,40,8,,13,,,,13,Jujutsu Kaisen,B,,13,The Night Comes For Us,A
-14,FFVII Rebirth (Gamefly),6/14/2025,PS5,80,9,,14,,,,14,Attack On Titan,A,,14,Headshot,B
-15,Black Myth Wukong (Gamefly),8/31/2025,PS5,35,9,,15,,,,15,Castlevania,A,,15,Beyond Skyline,C
-16,Warhammer Space Marine 2 (Gamefly),9/13/2025,XBOX,15,8,,16,,,,16,Blue Eye Samurai,A,,16,The Equalizer 3,B
-17,Silent Hill F (Gamefly),10/11/2025,PS5,16,8,,17,,,,17,,,,,17,The Beekeeper,C
-18,Avowed (Gamepass),11/22/2025,XBOX,30,9,,18,,,,18,The Batman 2,A,,18,Civil War,A
-19,Indiana Jones (Gamepass),12/13/2025,XBOX,20,9,,19,,,,19,The Penguin,A,,19,The Accountant 2,B
-20,,,,,,,,20,,,,20,The Diplomat,B,,20,Mickey 17,C
-21,,,,,,,,21,,,,21,The Sympathizer,A,,21,Nosferatu,A
-22,,,,,,,,22,,,,22,The Bride,B,,22,Megalopolis,A
-23,,,,,,,,23,,,,23,The Franchise,C,,23,The Bikeriders,B
-24,,,,,,,,24,,,,24,The Savages,B,,24,A Quiet Place Day One,A
-25,,,,,,,,25,,,,25,Alien Romulus,A,,25,Bad Boys 4,B
-26,,,,,,,,26,,,,26,Beetlejuice 2,A,,26,Beverly Hills Cop 4,C
-27,,,,,,,,27,,,,27,Gladiator 2,B,,27,Borderlands,C
-28,,,,,,,,28,,,,28,Joker 2,A,,28,Carry On,B
-29,,,,,,,,29,,,,29,Lord of The Rings,A,,29,Deadpool 3,A
-30,,,,,,,,30,,,,30,Moana 2,C,,30,The Fall Guy,B
-31,,,,,,,,31,,,,31,Sonic 3,A,,31,Furiosa,A
-32,,,,,,,,32,,,,32,Mufasa,C,,32,Horizon,B
-33,,,,,,,,33,,,,33,Karate Kid,B,,33,Inside Out 2,A
-34,,,,,,,,34,,,,34,Spider-man,A,,34,Kingdom of The Planet of The Apes,A
-35,,,,,,,,35,,,,35,Kraven The Hunter,C,,35,Maxxxine,A
-36,,,,,,,,36,,,,36,Transformers One,B,,36,Godzilla X Kong,B
-37,,,,,,,,37,,,,37,Venom 3,C,,37,Ghostbusters,C
-38,,,,,,,,38,,,,38,Wolfman,B,,38,Twisters,A
-39,,,,,,,,39,,,,39,Wicked,C,,39,Dune 2,A
-40,,,,,,,,40,,,,40,Dune Prophecy,A,,40,The Watchers,B
-41,,,,,,,,41,,,,41,Umbrella Academy,A,,41,Thanksgiving,A
-42,,,,,,,,42,,,,42,What If?,B,,42,The Creator,B
-43,,,,,,,,43,,,,43,Agatha,B,,43,Rebel Moon,C
-44,,,,,,,,44,,,,44,Daredevil,A,,44,The Holdovers,A
-45,,,,,,,,45,,,,45,Ironheart,C,,45,Past Lives,A
-46,,,,,,,,46,,,,46,Wonder Man,C,,46,Priscilla,B
-47,,,,,,,,47,,,,47,Creature Commandos,B,,47,The Iron Claw,A
-48,,,,,,,,48,,,,48,Lanterns,A,,48,Poor Things,A
-49,,,,,,,,49,,,,49,Peacemaker,A,,49,Saltburn,B
-50,,,,,,,,50,,,,50,Waller,C,,50,Dream Scenario,A
-51,,,,,,,,51,,,,51,Paradise Lost,B,,51,American Fiction,A
-52,,,,,,,,52,,,,52,The Authority,A,,52,The Color Purple,B
-53,,,,,,,,53,,,,53,Brave and The Bold,A,,53,Aquaman 2,C
-54,,,,,,,,54,,,,54,Supergirl,B,,54,The Warriors: Walled In,A
-55,,,,,,,,55,,,,55,Pacific Rim,A
-56,,,,,,,,56,,,,56,Pacific Rim Uprising,C
-57,,,,,,,,57,,,,57,976 Evil,B
-58,,,,,,,,58,,,,58,Out of The Dark,C
-59,,,,,,,,59,,,,59,Demon City,B
-60,,,,,,,,60,,,,60,Campfire Tales,A
-61,,,,,,,,61,,,,61,Pulse,B
-62,,,,,,,,62,,,,62,The Bye Bye Man,C
-63,,,,,,,,63,,,,63,Wraith,A
-64,,,,,,,,64,,,,64,24 Hours To Live,B
-65,,,,,,,,65,,,,65,Slice,C
-66,,,,,,,,66,,,,66,Avengement,A
-67,,,,,,,,67,,,,67,Y2K,C
-68,,,,,,,,68,,,,68,Logan,A
-69,,,,,,,,69,,,,69,The Intruder ,B
-70,,,,,,,,70,,,,70, Opera,B
-71,,,,,,,,71,,,,71,To Live and Die In LA,A
-72,,,,,,,,72,,,,72,Phantasm,B
-78,,,,,,,,78,,,,78,The Hitman,C
-79,,,,,,,,79,,,,79,City of Industry,B
-80,,,,,,,,80,,,,80,Sinners,A
-81,,,,,,,,81,,,,81,New Life,B
-82,,,,,,,,82,,,,82,Havoc,C
-83,,,,,,,,83,,,,83,Deadfall,Schlock
-84,,,,,,,,84,,,,84,Surrogates,C
-85,,,,,,,,85,,,,85,The Order,B
-86,,,,,,,,86,,,,86,Boy Kills World,C`;
+        const jonDataCSV = `Category,No.,Title,Date Finished,Platform,Hours,Score
+Video Game,1,Outer Worlds (PSPLUS),1/10/2025,PS5,28,8
+Video Game,2,Shadowrun Returns (PSPLUS),1/18/2025,PS5,22,7
+Video Game,3,Dishonored (Gamepass),1/25/2025,XBOX,11,9
+Video Game,4,Silent Hill 2 Remake (Gamefly),2/1/2025,PS5,18,9
+Video Game,5,Slitterhead (Gamefly),2/22/2025,PS5,15,7
+Video Game,6,No Way Out (Gamepass),3/2/2025,XBOX,7,8
+Video Game,7,Split/Second (Gamepass),3/8/2025,XBOX,12,9
+Video Game,8,Terminator Resistance (PSPLUS),3/15/2025,PS5,16,8
+Video Game,9,Robocop (Gamefly),3/29/2025,PS5,18,9
+Video Game,10,Evil West (PSPLUS),4/5/2025,PS5,14,8
+Video Game,11,Dead Island 2 (Gamepass),4/12/2025,XBOX,25,8
+Video Game,12,Stellar Blade (Gamefly),5/3/2025,PS5,30,9
+Video Game,13,Rise of The Ronin (Gamefly),5/17/2025,PS5,40,8
+Video Game,14,FFVII Rebirth (Gamefly),6/14/2025,PS5,80,9
+Video Game,15,Black Myth Wukong (Gamefly),8/31/2025,PS5,35,9
+Video Game,16,Warhammer Space Marine 2 (Gamefly),9/13/2025,XBOX,15,8
+Video Game,17,Silent Hill F (Gamefly),10/11/2025,PS5,16,8
+Video Game,18,Avowed (Gamepass),11/22/2025,XBOX,30,9
+Video Game,19,Indiana Jones (Gamepass),12/13/2025,XBOX,20,9
+Book,1,Tomie,2/19/2025,,,B
+Book,2,Neuromancer,2/23/2025,,,A
+Book,3,The Dreams In The Witch House,3/5/2025,,,A
+Book,4,The Pentagon's Brain,7/11/2025,,,A
+Book,5,Department of Truth Vol 5,7/13/2025,,,A
+TV,1,Vinland Saga,,,,A
+TV,2,Sakamoto Days,,,,B
+TV,3,American Primeval,,,,A
+TV,4,Onimusha,,,,B
+TV,5,Alice In Borderlands,,,,A
+TV,6,Common Side Effects,,,,
+TV,7,Solo Leveling S2,,,,
+TV,8,Severance S1,,,,
+TV,9,Babylon 5 S2,,,,
+TV,10,Daredevil Born Again,,,,
+TV,11,Severance Season 2,,,,
+TV,12,Hyouka,,,,
+TV,13,Lazarus,,,,
+TV,14,Night Agent S2,,,,
+TV,15,Goku Midnight Eye,,,,
+TV,16,The Bondsman,,,,
+TV,17,Black Mirror S7,,,,
+TV,18,The Last Drive In S7,,,,
+TV,19,Last of Us S2 (Ongoing),,,,
+TV,20,Andor S 2,,,,
+TV,21,Xfiles S1,,,,
+TV,22,Star Blazers 2199,,,,
+TV,23,Mobile Suit Gundam GQuuuuuuX,,,,
+TV,24,AD Police,,,,
+Movie,1,Den of Thieves Pantera,,,,B
+Movie,2,The Silent Hour,,,,C
+Movie,3,The Rock,,,,A
+Movie,4,American Star,,,,C
+Movie,5,Redemption,,,,B
+Movie,6,The Killer,,,,A
+Movie,7,The Raid,,,,A
+Movie,8,The Raid 2,,,,A
+Movie,9,Dredd,,,,A
+Movie,10,Upgrade,,,,A
+Movie,11,District 9,,,,A
+Movie,12,Hardcore Henry,,,,B
+Movie,13,The Night Comes For Us,,,,A
+Movie,14,Headshot,,,,B
+Movie,15,Beyond Skyline,,,,C
+Movie,16,The Equalizer 3,,,,B
+Movie,17,The Beekeeper,,,,C
+Movie,18,Civil War,,,,A
+Movie,19,The Accountant 2,,,,B
+Movie,20,Mickey 17,,,,C
+Movie,21,Nosferatu,,,,A
+Movie,22,Megalopolis,,,,A
+Movie,23,The Bikeriders,,,,B
+Movie,24,A Quiet Place Day One,,,,A
+Movie,25,Bad Boys 4,,,,B
+Movie,26,Beverly Hills Cop 4,,,,C
+Movie,27,Borderlands,,,,C
+Movie,28,Carry On,,,,B
+Movie,29,Deadpool 3,,,,A
+Movie,30,The Fall Guy,,,,B
+Movie,31,Furiosa,,,,A
+Movie,32,Horizon,,,,B
+Movie,33,Inside Out 2,,,,A
+Movie,34,Kingdom of The Planet of The Apes,,,,A
+Movie,35,Maxxxine,,,,A
+Movie,36,Godzilla X Kong,,,,B
+Movie,37,Ghostbusters,,,,C
+Movie,38,Twisters,,,,A
+Movie,39,Dune 2,,,,A
+Movie,40,The Watchers,,,,B
+Movie,41,Thanksgiving,,,,A
+Movie,42,The Creator,,,,B
+Movie,43,Rebel Moon,,,,C
+Movie,44,The Holdovers,,,,A
+Movie,45,Past Lives,,,,A
+Movie,46,Priscilla,,,,B
+Movie,47,The Iron Claw,,,,A
+Movie,48,Poor Things,,,,A
+Movie,49,Saltburn,,,,B
+Movie,50,Dream Scenario,,,,A
+Movie,51,American Fiction,,,,A
+Movie,52,The Color Purple,,,,B
+Movie,53,Aquaman 2,,,,C
+Movie,54,The Warriors: Walled In,,,,A
+Movie,55,Pacific Rim,,,,A
+Movie,56,Pacific Rim Uprising,,,,C
+Movie,57,976 Evil,,,,B
+Movie,58,Out of The Dark,,,,C
+Movie,59,Demon City,,,,B
+Movie,60,Campfire Tales,,,,A
+Movie,61,Pulse,,,,B
+Movie,62,The Bye Bye Man,,,,C
+Movie,63,Wraith,,,,A
+Movie,64,24 Hours To Live,,,,B
+Movie,65,Slice,,,,C
+Movie,66,Avengement,,,,A
+Movie,67,Y2K,,,,C
+Movie,68,Logan,,,,A
+Movie,69,The Intruder,,,,B
+Movie,70,Opera,,,,B
+Movie,71,To Live and Die In LA,,,,A
+Movie,72,Phantasm,,,,B
+Movie,78,The Hitman,,,,C
+Movie,79,City of Industry,,,,B
+Movie,80,Sinners,,,,A
+Movie,81,New Life,,,,B
+Movie,82,Havoc,,,,C
+Movie,83,Deadfall,,,,Schlock
+Movie,84,Surrogates,,,,C
+Movie,85,The Order,,,,B
+Movie,86,Boy Kills World,,,,C
+Movie,87,Hangman,,,,Schlock
+Movie,88,Twisted,,,,C
+Movie,89,Enemy,,,,B
+Movie,90,Drive,,,,A
+Movie,91,Azrael,,,,B
+Movie,92,The 6th Day,,,,C
+Movie,93,Classified,,,,Schlock
+Movie,94,Chief of Station,,,,Schlock
+Movie,95,The Wolfman,,,,B`;
         
-        // --- DATA MANAGEMENT ---
-        const saveData = () => {
-            localStorage.setItem('mediaTrackerData', JSON.stringify(mediaData));
+        // --- FIREBASE SETUP ---
+        const setupFirebase = async () => {
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+                if (!firebaseConfigStr) {
+                    throw new Error("Firebase config is not available.");
+                }
+                const firebaseConfig = JSON.parse(firebaseConfigStr);
+
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                console.log("Firebase initialized and user authenticated.");
+                
+                // Check if data needs to be seeded
+                await seedInitialData();
+
+                // Setup real-time listeners
+                setupListeners();
+
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+                document.body.innerHTML = `<div class="text-red-400 p-8">Failed to connect to the database. Please ensure the environment is configured correctly.</div>`;
+            }
         };
         
-        const parseCSVToJSONForStorage = (csv) => {
-            const lines = csv.split('\n').filter(line => line.trim() !== '' && !line.startsWith('No.'));
+        const parseCSVToJSONForStorage = (csv, isFlat = false) => {
+            const lines = csv.split('\n').filter(line => line.trim() !== '' && !line.startsWith('No.') && !line.startsWith('Category'));
             
             const data = { games: [], books: [], shows: [], movies: [] };
-            let idCounter = Date.now() + Math.random(); 
 
             lines.forEach(line => {
                 const values = line.split(',');
-                // Games (cols 0-5)
-                if (values[0] && values[1]) {
-                    const dateParts = values[2].split('/');
-                    const formattedDate = dateParts.length === 3 ? `${dateParts[2]}-${dateParts[0].padStart(2, '0')}-${dateParts[1].padStart(2, '0')}` : '';
-                    data.games.push({ id: idCounter++, no: values[0], title: values[1], date: formattedDate, platform: values[3], hours: values[4], score: values[5] });
-                }
-                // Books (cols 7-10)
-                if (values[7] && values[8]) {
-                    const dateParts = values[9].split('/');
-                    const formattedDate = dateParts.length === 3 ? `${dateParts[2]}-${dateParts[0].padStart(2, '0')}-${dateParts[1].padStart(2, '0')}` : '';
-                    data.books.push({ id: idCounter++, no: values[7], title: values[8], date: formattedDate, score: values[10] });
-                }
-                // TV Shows (cols 12-14)
-                if (values[12] && values[13]) {
-                    data.shows.push({ id: idCounter++, no: values[12], title: values[13], score: values[14] });
-                }
-                // Movies (cols 16-18)
-                if (values[16] && values[17]) {
-                    data.movies.push({ id: idCounter++, no: values[16], title: values[17], score: values[18] });
+                if (isFlat) {
+                    const category = (values[0] || '').toLowerCase().trim().replace(' ', '_');
+                    const item = {
+                        no: values[1] || '',
+                        title: values[2] || '',
+                        date: (values[3] || '').replace(/"/g, ''),
+                        platform: values[4] || '',
+                        hours: values[5] || '',
+                        score: values[6] || ''
+                    };
+                    if (category === 'video_game' && item.title) data.games.push(item);
+                    else if (category === 'book' && item.title) data.books.push(item);
+                    else if (category === 'tv' && item.title) data.shows.push(item);
+                    else if (category === 'movie' && item.title) data.movies.push(item);
+
+                } else {
+                     // Games (cols 0-5)
+                    if (values[1] && values[1].trim()) {
+                        const dateParts = (values[2] || '').split('/');
+                        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}-${dateParts[0].padStart(2, '0')}-${dateParts[1].padStart(2, '0')}` : '';
+                        data.games.push({ 
+                            no: values[0] || '', 
+                            title: values[1] || '', 
+                            date: formattedDate, 
+                            platform: values[3] || '', 
+                            hours: values[4] || '', 
+                            score: values[5] || '' 
+                        });
+                    }
+                    // Books (cols 7-10)
+                    if (values[7] && values[8]) {
+                        const dateParts = (values[9] || '').split('/');
+                        const formattedDate = dateParts.length === 3 ? `${dateParts[2]}-${dateParts[0].padStart(2, '0')}-${dateParts[1].padStart(2, '0')}` : '';
+                        data.books.push({ 
+                            no: values[7] || '', 
+                            title: values[8] || '', 
+                            date: formattedDate, 
+                            score: values[10] || '' 
+                        });
+                    }
+                    // TV Shows (cols 12-14)
+                    if (values[12] && values[13]) {
+                        data.shows.push({ 
+                            no: values[12] || '', 
+                            title: values[13] || '', 
+                            score: values[14] || '' 
+                        });
+                    }
+                    // Movies (cols 16-18)
+                    if (values[16] && values[17]) {
+                        data.movies.push({ 
+                            no: values[16] || '', 
+                            title: values[17] || '', 
+                            score: values[18] || '' 
+                        });
+                    }
                 }
             });
             return data;
         };
 
-        const loadData = () => {
-            const savedData = localStorage.getItem('mediaTrackerData');
-            if (savedData) {
-                mediaData = JSON.parse(savedData);
+        // --- DATA SEEDING ---
+        const seedInitialData = async () => {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const checkRef = collection(db, `artifacts/${appId}/public/data/ernie_games`);
+            const checkSnapshot = await getDocs(checkRef);
+
+            if (checkSnapshot.empty) {
+                console.log("Database is empty. Seeding initial data...");
+                const batch = writeBatch(db);
+
+                const initialErnieData = parseCSVToJSONForStorage(ernieDataCSV);
+                Object.keys(initialErnieData).forEach(category => {
+                    initialErnieData[category].forEach(item => {
+                        const docRef = doc(collection(db, `artifacts/${appId}/public/data/ernie_${category}`));
+                        batch.set(docRef, item);
+                    });
+                });
+
+                const initialJonData = parseCSVToJSONForStorage(jonDataCSV, true); // Use flat parser
+                 Object.keys(initialJonData).forEach(category => {
+                    initialJonData[category].forEach(item => {
+                        const docRef = doc(collection(db, `artifacts/${appId}/public/data/jon_${category}`));
+                        batch.set(docRef, item);
+                    });
+                });
+
+                // Seed GameClub data
+                const initialGameClub = [
+                    { title: 'Castlevania Lords of Shadow', jon: 'FALSE', ernie: 'FALSE' },
+                    { title: 'Tomb Raider Anniversary', jon: 'FALSE', ernie: 'FALSE' },
+                    { title: 'Final Fantasy XIII', jon: 'FALSE', ernie: 'FALSE' },
+                    { title: 'Lies of P', jon: 'TRUE', ernie: 'FALSE' },
+                    { title: 'Mad Max', jon: 'FALSE', ernie: 'FALSE' },
+                    { title: 'Parasite Eve II', jon: 'FALSE', ernie: 'TRUE' },
+                    { title: 'Dino Crisis', jon: 'FALSE', ernie: 'TRUE' },
+                ];
+                initialGameClub.forEach(item => {
+                    const docRef = doc(collection(db, `artifacts/${appId}/public/data/gameclub`));
+                    batch.set(docRef, item);
+                });
+                
+                const initialCoop = [
+                     { title: 'Dying Light 2', finished: 'FALSE' },
+                     { title: 'A Way Out', finished: 'TRUE' },
+                     { title: 'Ghost Recon Breakpoint', finished: 'FALSE' },
+                     { title: 'MGS PeaceWalker', finished: 'FALSE' },
+                     { title: 'Diablo II Remastered', finished: 'FALSE' },
+                     { title: 'Split Fiction', finished: 'TRUE' },
+                     { title: 'Darksiders Genesis', finished: 'FALSE' },
+                ];
+                initialCoop.forEach(item => {
+                    const docRef = doc(collection(db, `artifacts/${appId}/public/data/coop`));
+                    batch.set(docRef, item);
+                });
+
+                await batch.commit();
+                console.log("Initial data seeded successfully.");
             } else {
-                // Load default data from full CSVs if nothing is saved
-                mediaData = {
-                    ernie: parseCSVToJSONForStorage(ernieDataCSV),
-                    jon: parseCSVToJSONForStorage(jonDataCSV),
-                    gameclub: [
-                        { id: Date.now()+1, title: 'Castlevania Lords of Shadow', jon: 'FALSE', ernie: 'FALSE' },
-                        { id: Date.now()+2, title: 'Tomb Raider Anniversary', jon: 'FALSE', ernie: 'FALSE' },
-                        { id: Date.now()+3, title: 'Final Fantasy XIII', jon: 'FALSE', ernie: 'FALSE' },
-                        { id: Date.now()+4, title: 'Lies of P', jon: 'TRUE', ernie: 'FALSE' },
-                        { id: Date.now()+5, title: 'Mad Max', jon: 'FALSE', ernie: 'FALSE' },
-                        { id: Date.now()+6, title: 'Parasite Eve II', jon: 'FALSE', ernie: 'TRUE' },
-                        { id: Date.now()+7, title: 'Dino Crisis', jon: 'FALSE', ernie: 'TRUE' },
-                    ],
-                    coop: [
-                        { id: Date.now()+8, title: 'Dying Light 2', finished: 'FALSE' },
-                        { id: Date.now()+9, title: 'A Way Out', finished: 'TRUE' },
-                        { id: Date.now()+10, title: 'Ghost Recon Breakpoint', finished: 'FALSE' },
-                        { id: Date.now()+11, title: 'MGS PeaceWalker', finished: 'FALSE' },
-                        { id: Date.now()+12, title: 'Diablo II Remastered', finished: 'FALSE' },
-                        { id: Date.now()+13, title: 'Split Fiction', finished: 'TRUE' },
-                        { id: Date.now()+14, title: 'Darksiders Genesis', finished: 'FALSE' },
-                    ]
-                };
-                saveData();
+                console.log("Database already contains data. Skipping seed.");
             }
         };
+        
+        // --- REAL-TIME LISTENERS ---
+        const setupListeners = () => {
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const categories = ['games', 'movies', 'shows', 'books'];
+            
+            // Listen to Ernie's data
+            categories.forEach(category => {
+                const collRef = collection(db, `artifacts/${appId}/public/data/ernie_${category}`);
+                onSnapshot(collRef, (snapshot) => {
+                    mediaData.ernie[category] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    rerenderAll();
+                });
+            });
 
-        // --- UTILITY FUNCTIONS ---
+            // Listen to Jon's data
+            categories.forEach(category => {
+                const collRef = collection(db, `artifacts/${appId}/public/data/jon_${category}`);
+                onSnapshot(collRef, (snapshot) => {
+                    mediaData.jon[category] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    rerenderAll();
+                });
+            });
+            
+            // Listen to GameClub data
+            const gameclubRef = collection(db, `artifacts/${appId}/public/data/gameclub`);
+            onSnapshot(gameclubRef, (snapshot) => {
+                mediaData.gameclub = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                rerenderAll();
+            });
+            
+            const coopRef = collection(db, `artifacts/${appId}/public/data/coop`);
+            onSnapshot(coopRef, (snapshot) => {
+                mediaData.coop = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                rerenderAll();
+            });
+        };
+
+        // --- UTILITY FUNCTIONS (unchanged) ---
         const getScoreClass = (score) => {
             if (!score) return '';
             const numScore = convertScoreToNumber(score);
@@ -434,18 +622,15 @@
         // --- MODAL & FORM HANDLING ---
         const modal = document.getElementById('media-modal');
         const form = document.getElementById('media-form');
-        const recommendationModal = document.getElementById('recommendation-modal');
 
-        const openModal = (person, category, itemId = null) => {
+        window.openModal = (person, category, itemId = null) => {
             form.reset();
             document.getElementById('form-person').value = person;
             document.getElementById('form-category').value = category;
             document.getElementById('form-item-id').value = itemId || '';
 
-            // Hide all groups first
-            ['form-title-group', 'form-score-group', 'form-date-group', 'form-platform-group', 'form-hours-group', 'form-gameclub-group', 'form-coop-group'].forEach(id => document.getElementById(id).style.display = 'none');
+            ['form-title-group', 'form-score-group', 'form-date-group', 'form-platform-group', 'form-hours-group', 'form-gameclub-group', 'form-coop-group', 'form-imdb-group'].forEach(id => document.getElementById(id).style.display = 'none');
             
-            // Show relevant groups
             document.getElementById('form-title-group').style.display = 'block';
 
             if (person === 'gameclub') {
@@ -455,12 +640,15 @@
                     document.getElementById('form-coop-group').style.display = 'block';
                 }
             } else {
-                // Standard media item
                 document.getElementById('form-score-group').style.display = 'block';
                 const isGame = category === 'games';
+                const isBook = category === 'books';
                 document.getElementById('form-platform-group').style.display = isGame ? 'block' : 'none';
                 document.getElementById('form-hours-group').style.display = isGame ? 'block' : 'none';
                 document.getElementById('form-date-group').style.display = 'block';
+                if (!isGame && !isBook) {
+                    document.getElementById('form-imdb-group').style.display = 'block';
+                }
             }
 
 
@@ -477,6 +665,9 @@
                             document.getElementById('form-platform').value = item.platform || '';
                             document.getElementById('form-hours').value = item.hours || '';
                         }
+                        if(category === 'movies' || category === 'shows'){
+                            document.getElementById('form-imdb').value = item.imdbLink || '';
+                        }
                     } else if (category === 'gameclub') {
                         document.getElementById('form-jon-finished').checked = item.jon === 'TRUE';
                         document.getElementById('form-ernie-finished').checked = item.ernie === 'TRUE';
@@ -490,21 +681,22 @@
             modal.classList.remove('hidden');
         };
 
-        const closeModal = () => {
+        window.closeModal = () => {
             modal.classList.add('hidden');
         };
 
-        const handleFormSubmit = (e) => {
+        const handleFormSubmit = async (e) => {
             e.preventDefault();
             const person = document.getElementById('form-person').value;
             const category = document.getElementById('form-category').value;
             const itemId = document.getElementById('form-item-id').value;
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
             let newItemData = { title: document.getElementById('form-title').value };
-            let dataList;
+            let collectionPath;
 
             if (person === 'gameclub') {
-                dataList = mediaData[category];
+                collectionPath = `artifacts/${appId}/public/data/${category}`;
                 if (category === 'gameclub') {
                     newItemData.jon = document.getElementById('form-jon-finished').checked ? 'TRUE' : 'FALSE';
                     newItemData.ernie = document.getElementById('form-ernie-finished').checked ? 'TRUE' : 'FALSE';
@@ -512,158 +704,97 @@
                     newItemData.finished = document.getElementById('form-coop-finished').checked ? 'TRUE' : 'FALSE';
                 }
             } else {
-                dataList = mediaData[person][category];
+                collectionPath = `artifacts/${appId}/public/data/${person}_${category}`;
                 newItemData.score = document.getElementById('form-score').value;
                 newItemData.date = document.getElementById('form-date').value;
                 newItemData.platform = document.getElementById('form-platform').value;
                 newItemData.hours = document.getElementById('form-hours').value;
+                 if(category === 'movies' || category === 'shows'){
+                    newItemData.imdbLink = document.getElementById('form-imdb').value;
+                }
             }
 
-            if (itemId) {
-                const itemIndex = dataList.findIndex(i => i.id == itemId);
-                if (itemIndex > -1) {
-                    const oldItem = dataList[itemIndex];
-                    dataList[itemIndex] = { ...oldItem, ...newItemData };
+            try {
+                if (itemId) {
+                    const docRef = doc(db, collectionPath, itemId);
+                    await setDoc(docRef, newItemData, { merge: true });
+                } else {
+                    await addDoc(collection(db, collectionPath), newItemData);
                 }
-            } else {
-                newItemData.id = Date.now();
-                if (!dataList) dataList = [];
-                dataList.push(newItemData);
+                closeModal();
+            } catch (error) {
+                console.error("Error writing to database:", error);
+                alert("Could not save item. Please try again.");
             }
-            
-            saveData();
-            rerenderAll();
-            closeModal();
         };
 
-        const deleteItem = (person, category, itemId) => {
+        window.deleteItem = async (person, category, itemId) => {
             if (confirm('Are you sure you want to delete this item?')) {
-                const dataList = person === 'gameclub' ? mediaData[category] : mediaData[person][category];
-                const updatedList = dataList.filter(i => i.id != itemId);
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const collectionPath = person === 'gameclub' 
+                    ? `artifacts/${appId}/public/data/${category}`
+                    : `artifacts/${appId}/public/data/${person}_${category}`;
                 
-                if (person === 'gameclub') {
-                    mediaData[category] = updatedList;
-                } else {
-                    mediaData[person][category] = updatedList;
+                try {
+                    await deleteDoc(doc(db, collectionPath, itemId));
+                } catch (error) {
+                    console.error("Error deleting item:", error);
+                    alert("Could not delete item. Please try again.");
                 }
-
-                saveData();
-                rerenderAll();
             }
         };
         
-        const resetData = () => {
-            if (confirm('Are you sure you want to reset all data? This will delete any items you have added or edited and restore the original lists.')) {
-                localStorage.removeItem('mediaTrackerData');
-                location.reload();
+        window.resetData = () => {
+             if (confirm('Are you sure you want to reset all data? This will delete any items you have added or edited and restore the original lists.')) {
+                // This is a more complex operation with Firestore. For this app, we will clear the collections.
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const collectionsToDelete = [
+                    `artifacts/${appId}/public/data/ernie_games`,
+                    `artifacts/${appId}/public/data/ernie_movies`,
+                    `artifacts/${appId}/public/data/ernie_shows`,
+                    `artifacts/${appId}/public/data/ernie_books`,
+                    `artifacts/${appId}/public/data/jon_games`,
+                    `artifacts/${appId}/public/data/jon_movies`,
+                    `artifacts/${appId}/public/data/jon_shows`,
+                    `artifacts/${appId}/public/data/jon_books`,
+                    `artifacts/${appId}/public/data/gameclub`,
+                    `artifacts/${appId}/public/data/coop`,
+                ];
+
+                const deleteCollection = async (path) => {
+                    const querySnapshot = await getDocs(collection(db, path));
+                    const batch = writeBatch(db);
+                    querySnapshot.forEach((doc) => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                };
+
+                Promise.all(collectionsToDelete.map(path => deleteCollection(path)))
+                    .then(() => {
+                        console.log("All collections cleared.");
+                        // Now we can re-seed
+                        seedInitialData().then(() => location.reload());
+                    })
+                    .catch(error => {
+                        console.error("Error clearing data:", error);
+                    });
             }
-        };
-
-        // --- AI RECOMMENDATIONS ---
-        const openRecommendationModal = () => {
-            const contentDiv = document.getElementById('recommendation-content');
-            contentDiv.innerHTML = '<div class="spinner"></div><p class="text-center text-gray-400">Getting recommendations from Gemini...</p>';
-            recommendationModal.classList.remove('hidden');
-        };
-
-        const closeRecommendationModal = () => {
-            recommendationModal.classList.add('hidden');
-        };
-
-        const getRecommendations = async (person) => {
-            openRecommendationModal();
-
-            const personData = mediaData[person];
-            const threshold = 8.5; // B+ or higher
-
-            const topGames = (personData.games || []).filter(item => convertScoreToNumber(item.score) >= threshold).map(item => item.title);
-            const topMovies = (personData.movies || []).filter(item => convertScoreToNumber(item.score) >= threshold).map(item => item.title);
-            const topShows = (personData.shows || []).filter(item => convertScoreToNumber(item.score) >= threshold).map(item => item.title);
-
-            if (topGames.length === 0 && topMovies.length === 0 && topShows.length === 0) {
-                document.getElementById('recommendation-content').innerHTML = `<p>Not enough highly-rated media to generate recommendations. Please rate some items B+ or higher!</p>`;
-                return;
-            }
-
-            const prompt = `Based on this list of highly-rated media, please recommend 3 new items for each category that this person might enjoy.
-
-            Highly-rated Games: ${topGames.join(', ') || 'None'}
-            Highly-rated Movies: ${topMovies.join(', ') || 'None'}
-            Highly-rated TV Shows: ${topShows.join(', ') || 'None'}
-
-            Provide the recommendations in a JSON object format.`;
-            
-            let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
-            const payload = { 
-                contents: chatHistory,
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: {
-                            "games": { "type": "ARRAY", "items": { "type": "STRING" } },
-                            "movies": { "type": "ARRAY", "items": { "type": "STRING" } },
-                            "shows": { "type": "ARRAY", "items": { "type": "STRING" } }
-                        }
-                    }
-                }
-            };
-            const apiKey = ""; // Provided by the environment
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    throw new Error(`API request failed with status ${response.status}`);
-                }
-
-                const result = await response.json();
-                
-                if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0]) {
-                    const jsonText = result.candidates[0].content.parts[0].text;
-                    const recommendations = JSON.parse(jsonText);
-                    displayRecommendations(recommendations);
-                } else {
-                    throw new Error("Unexpected API response format.");
-                }
-
-            } catch (error) {
-                console.error("Error fetching recommendations:", error);
-                document.getElementById('recommendation-content').innerHTML = `<p class="text-red-400">Sorry, something went wrong while getting recommendations. Please try again later.</p>`;
-            }
-        };
-
-        const displayRecommendations = (recs) => {
-            const contentDiv = document.getElementById('recommendation-content');
-            let html = '';
-
-            const createRecList = (title, items) => {
-                if (!items || items.length === 0) return '';
-                return `
-                    <div class="mb-4">
-                        <h3 class="font-bold text-lg mb-2">${title}</h3>
-                        <ul class="list-disc list-inside space-y-1 text-gray-300">
-                            ${items.map(item => `<li>${item}</li>`).join('')}
-                        </ul>
-                    </div>
-                `;
-            };
-
-            html += createRecList('Recommended Games', recs.games);
-            html += createRecList('Recommended Movies', recs.movies);
-            html += createRecList('Recommended TV Shows', recs.shows);
-
-            contentDiv.innerHTML = html;
         };
 
         // --- RENDER FUNCTIONS ---
         const createCard = (item, type, person, category) => {
             if (!item.title || item.title.trim() === '') return '';
+            let imdbLinkHTML = '';
+            if (item.imdbLink) {
+                imdbLinkHTML = `
+                    <a href="${item.imdbLink}" target="_blank" class="card-action-btn" title="View on IMDb">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="text-yellow-400" viewBox="0 0 16 16">
+                            <path d="M8.069 1.356A4.032 4.032 0 0 1 11.953.513c.412.083.78.27.982.522.24.3.293.66.134 1.016l-.396.903c-.23.523-.034.935.396 1.144.43.21.829-.023 1.072-.466l.422-.762c.24-.43.66-.66.982-.522.412.083.562.466.422.865l-1.144 3.28c-.14.4-.43.66-.829.66-.43 0-.627-.27-.829-.66L13.25 7.23c-.24-.522-.66-.762-.982-.865-.412-.083-.78.083-.982.466l-.562 1.016c-.24.43-.034.865.396 1.072.43.21.829-.023 1.072-.466l.396-.762c.24-.43.66-.66.982-.522.412.083.562.466.422.865l-2.24 6.562c-.14.4-.43.66-.829.66-.43 0-.627-.27-.829-.66l-1.144-2.586c-.24-.522-.66-.762-.982-.865s-.78.083-.982.466l-.562 1.016c-.24.43-.034.865.396 1.072.43.21.829-.023 1.072-.466l.396-.762c.24-.43.66-.66.982-.522.412.083.562.466.422.865l-2.24 6.562c-.14.4-.43.66-.829.66-.43 0-.627-.27-.829-.66L6.2 13.1c-.24-.522-.66-.762-.982-.865-.412-.083-.78.083-.982.466l-.562 1.016c-.24.43-.034.865.396 1.072.43.21.829-.023 1.072-.466l.396-.762c.24-.43.66-.66.982-.522.412.083.562.466.422.865L4.047 15.487c-.14.4-.43.66-.829.66-.43 0-.627-.27-.829-.66L1.245 9.62c-.14-.4.01-.782.422-.865.322-.098.742.134.982.522l.422.762c.24.43.66.66.982.522.412-.083.78-.27.982-.522.24-.3.293-.66.134-1.016l-.396-.903C4.54 7.6c-.23-.523-.034-.935.396-1.144.43-.21.829.023 1.072.466l.422.762c.24.43.66.66.982.522.412-.083.78-.27.982-.522.24-.3.293-.66.134-1.016L8.167.93c-.14-.4.01-.782.422-.865.322-.098.742.134.982.522L8.069 1.356z"/>
+                        </svg>
+                    </a>
+                `;
+            }
             return `
                 <div class="card rounded-lg p-4 flex flex-col justify-between">
                     <div>
@@ -673,8 +804,9 @@
                     </div>
                     ${item.score ? `<div class="mt-4 self-start"><span class="score ${getScoreClass(item.score)}">${item.score}</span></div>` : ''}
                     <div class="card-actions">
-                        <button class="card-action-btn" onclick="openModal('${person}', '${category}', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button>
-                        <button class="card-action-btn" onclick="deleteItem('${person}', '${category}', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button>
+                        ${imdbLinkHTML}
+                        <button class="card-action-btn" onclick="openModal('${person}', '${category}', '${item.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button>
+                        <button class="card-action-btn" onclick="deleteItem('${person}', '${category}', '${item.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button>
                     </div>
                 </div>`;
         };
@@ -774,13 +906,7 @@
 
         const renderPersonPage = (containerId, data) => {
             const container = document.getElementById(containerId);
-            const personName = containerId.charAt(0).toUpperCase() + containerId.slice(1);
-            let recommendationButtonHTML = `
-                <div class="mb-8 text-center">
-                    <button class="btn-primary" onclick="getRecommendations('${containerId}')">✨ Get AI Recommendations for ${personName}</button>
-                </div>
-            `;
-            container.innerHTML = recommendationButtonHTML + `
+            container.innerHTML = `
                 ${createSection('Video Games', data.games || [], 'Games', containerId)}
                 ${createSection('Movies', data.movies || [], 'Movies', containerId)}
                 ${createSection('TV Shows', data.shows || [], 'Shows', containerId)}
@@ -789,12 +915,12 @@
         
         const renderGameClub = () => {
             const container = document.getElementById('gameclub');
-            const createGameClubRow = (item) => `<li class="card list-item rounded-lg p-4 flex items-center justify-between"><span class="font-semibold">${item.title}</span><div class="flex items-center gap-4"><span class="flex items-center gap-2 text-sm">Jon: ${item.jon === 'TRUE' ? '✅' : '❌'}</span><span class="flex items-center gap-2 text-sm">Ernie: ${item.ernie === 'TRUE' ? '✅' : '❌'}</span></div><div class="card-actions"><button class="card-action-btn" onclick="openModal('gameclub', 'gameclub', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button><button class="card-action-btn" onclick="deleteItem('gameclub', 'gameclub', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button></div></li>`;
-            const createCoopRow = (item) => `<li class="card list-item rounded-lg p-4 flex items-center justify-between"><span class="font-semibold">${item.title}</span><span class="text-sm">${item.finished === 'TRUE' ? '✅ Finished' : '❌ In Progress'}</span><div class="card-actions"><button class="card-action-btn" onclick="openModal('gameclub', 'coop', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button><button class="card-action-btn" onclick="deleteItem('gameclub', 'coop', ${item.id})"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button></div></li>`;
+            const createGameClubRow = (item) => `<li class="card list-item rounded-lg p-4 flex items-center justify-between"><span class="font-semibold">${item.title}</span><div class="flex items-center gap-4"><span class="flex items-center gap-2 text-sm">Jon: ${item.jon === 'TRUE' ? '✅' : '❌'}</span><span class="flex items-center gap-2 text-sm">Ernie: ${item.ernie === 'TRUE' ? '✅' : '❌'}</span></div><div class="card-actions"><button class="card-action-btn" onclick="openModal('gameclub', 'gameclub', '${item.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button><button class="card-action-btn" onclick="deleteItem('gameclub', 'gameclub', '${item.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button></div></li>`;
+            const createCoopRow = (item) => `<li class="card list-item rounded-lg p-4 flex items-center justify-between"><span class="font-semibold">${item.title}</span><span class="text-sm">${item.finished === 'TRUE' ? '✅ Finished' : '❌ In Progress'}</span><div class="card-actions"><button class="card-action-btn" onclick="openModal('gameclub', 'coop', '${item.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button><button class="card-action-btn" onclick="deleteItem('gameclub', 'coop', '${item.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button></div></li>`;
             container.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-8"><div><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">GameClub List</h2><button class="btn-primary text-sm py-1 px-3" onclick="openModal('gameclub', 'gameclub')">+ Add</button></div><ul class="space-y-3">${(mediaData.gameclub || []).map(createGameClubRow).join('')}</ul></div><div><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">Co-Op List</h2><button class="btn-primary text-sm py-1 px-3" onclick="openModal('gameclub', 'coop')">+ Add</button></div><ul class="space-y-3">${(mediaData.coop || []).map(createCoopRow).join('')}</ul></div></div>`;
         }
 
-        const sortAndRerender = (person, category, sortBy, clickedButton) => {
+        window.sortAndRerender = (person, category, sortBy, clickedButton) => {
             if (clickedButton) {
                 const controlsContainer = document.getElementById(`sort-controls-${person}-${category}`);
                 controlsContainer.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('sort-btn-active'));
@@ -818,7 +944,7 @@
             renderGameClub();
         };
 
-        const showTab = (tabId) => {
+        window.showTab = (tabId) => {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
             document.getElementById(tabId).classList.remove('hidden');
             document.querySelectorAll('.tab').forEach(button => button.classList.remove('tab-active'));
@@ -936,13 +1062,13 @@
 
         // --- INITIALIZATION ---
         document.addEventListener('DOMContentLoaded', () => {
-            loadData();
-            rerenderAll();
+            setupFirebase(); // Main entry point
+            
+            // Other initializations
             showTab('overview');
             form.addEventListener('submit', handleFormSubmit);
-            
-            // Theme and Reset Button Init
             themeToggleBtn.addEventListener('click', toggleTheme);
+            document.getElementById('reset-data-btn').addEventListener('click', resetData);
             applyInitialTheme();
         });
     </script>
