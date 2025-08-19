@@ -427,13 +427,13 @@ Movie,95,The Wolfman,,,,B`;
                 } else {
                 // This block runs when you host the file yourself
                 // =================================================================
-                // PASTE YOUR FIREBASE CONFIGURATION OBJECT HERE
+                // YOUR FIREBASE CONFIGURATION IS PLACED HERE
                 // =================================================================
                     firebaseConfig = {
                         apiKey: "AIzaSyCimwjrJfXnUvc-OMEpDdanLuSPHW0Mh6s",
                         authDomain: "mediatracker2025-56207.firebaseapp.com",
                         projectId: "mediatracker2025-56207",
-                        storageBucket: "mediatracker2025-56207.firebasestorage.app",
+                        storageBucket: "mediatracker2025-56207.appspot.com", // CORRECTED URL
                         messagingSenderId: "263388391349",
                         appId: "1:263388391349:web:4c63ba6e6bbbac7a77dbfc",
                         measurementId: "G-6S9EYBPPPN"
@@ -473,6 +473,7 @@ Movie,95,The Wolfman,,,,B`;
                     <p class="text-gray-400 mt-2">Please ensure you have pasted your Firebase project configuration correctly in the HTML file, or that the environment is configured correctly.</p>
                     <p class="text-sm text-gray-500 mt-4">Error details: ${error.message}</p>
                     </div>`;
+                throw error; // Re-throw the error to prevent further execution
             }
         };
         
