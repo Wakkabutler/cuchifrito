@@ -236,6 +236,7 @@
         let mediaData = { ernie: {}, jon: {}, gameclub: [], coop: [] };
         let scoreChartInstance; // To hold the chart instance
         let db, auth; // Firebase instances
+        let appId; // To hold the application ID
 
         // Original CSV data for initial population
         const ernieDataCSV = `No.,Title,Date Finished,Platform,Hours,Score,,No.,Title,Date Finished,Score,,No.,Title,Score,,No.,Title,Score
@@ -417,18 +418,40 @@ Movie,95,The Wolfman,,,,B`;
         
         // --- FIREBASE SETUP ---
         const setupFirebase = async () => {
+            let firebaseConfig;
             try {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const firebaseConfigStr = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
-                if (!firebaseConfigStr) {
-                    throw new Error("Firebase config is not available.");
+                // This block runs in the collaborative environment
+                if (typeof __firebase_config !== 'undefined') {
+                    appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                    firebaseConfig = JSON.parse(__firebase_config);
+                } else {
+                // This block runs when you host the file yourself
+                // =================================================================
+                // PASTE YOUR FIREBASE CONFIGURATION OBJECT HERE
+                // =================================================================
+                    firebaseConfig = {
+                        apiKey: "AIzaSyCimwjrJfXnUvc-OMEpDdanLuSPHW0Mh6s",
+                        authDomain: "mediatracker2025-56207.firebaseapp.com",
+                        projectId: "mediatracker2025-56207",
+                        storageBucket: "mediatracker2025-56207.firebasestorage.app",
+                        messagingSenderId: "263388391349",
+                        appId: "1:263388391349:web:4c63ba6e6bbbac7a77dbfc",
+                        measurementId: "G-6S9EYBPPPN"
+                    };
+                // =================================================================
+                    appId = firebaseConfig.appId; // Use appId from your config
                 }
-                const firebaseConfig = JSON.parse(firebaseConfigStr);
+
+                // Check if the config is still the placeholder
+                if (!firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY") {
+                     throw new Error("Firebase config is not set. Please paste your project's firebaseConfig object into the script.");
+                }
 
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
 
+                // Sign in based on the environment
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
@@ -445,7 +468,11 @@ Movie,95,The Wolfman,,,,B`;
 
             } catch (error) {
                 console.error("Firebase initialization failed:", error);
-                document.body.innerHTML = `<div class="text-red-400 p-8">Failed to connect to the database. Please ensure the environment is configured correctly.</div>`;
+                document.body.innerHTML = `<div class="p-4 sm:p-8 text-center">
+                    <h1 class="text-2xl font-bold text-red-400">Failed to connect to the database.</h1>
+                    <p class="text-gray-400 mt-2">Please ensure you have pasted your Firebase project configuration correctly in the HTML file, or that the environment is configured correctly.</p>
+                    <p class="text-sm text-gray-500 mt-4">Error details: ${error.message}</p>
+                    </div>`;
             }
         };
         
@@ -518,9 +545,14 @@ Movie,95,The Wolfman,,,,B`;
         };
 
         // --- DATA SEEDING ---
+        const getCollectionPath = (basePath) => {
+             // In the collaborative environment, data is stored in a nested structure.
+             // When self-hosting, it's simpler to use root collections.
+            return typeof __app_id !== 'undefined' ? `artifacts/${appId}/public/data/${basePath}` : basePath;
+        }
+
         const seedInitialData = async () => {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const checkRef = collection(db, `artifacts/${appId}/public/data/ernie_games`);
+            const checkRef = collection(db, getCollectionPath(`ernie_games`));
             const checkSnapshot = await getDocs(checkRef);
 
             if (checkSnapshot.empty) {
@@ -530,7 +562,7 @@ Movie,95,The Wolfman,,,,B`;
                 const initialErnieData = parseCSVToJSONForStorage(ernieDataCSV);
                 Object.keys(initialErnieData).forEach(category => {
                     initialErnieData[category].forEach(item => {
-                        const docRef = doc(collection(db, `artifacts/${appId}/public/data/ernie_${category}`));
+                        const docRef = doc(collection(db, getCollectionPath(`ernie_${category}`)));
                         batch.set(docRef, item);
                     });
                 });
@@ -538,7 +570,7 @@ Movie,95,The Wolfman,,,,B`;
                 const initialJonData = parseCSVToJSONForStorage(jonDataCSV, true); // Use flat parser
                  Object.keys(initialJonData).forEach(category => {
                     initialJonData[category].forEach(item => {
-                        const docRef = doc(collection(db, `artifacts/${appId}/public/data/jon_${category}`));
+                        const docRef = doc(collection(db, getCollectionPath(`jon_${category}`)));
                         batch.set(docRef, item);
                     });
                 });
@@ -554,7 +586,7 @@ Movie,95,The Wolfman,,,,B`;
                     { title: 'Dino Crisis', jon: 'FALSE', ernie: 'TRUE' },
                 ];
                 initialGameClub.forEach(item => {
-                    const docRef = doc(collection(db, `artifacts/${appId}/public/data/gameclub`));
+                    const docRef = doc(collection(db, getCollectionPath(`gameclub`)));
                     batch.set(docRef, item);
                 });
                 
@@ -568,7 +600,7 @@ Movie,95,The Wolfman,,,,B`;
                      { title: 'Darksiders Genesis', finished: 'FALSE' },
                 ];
                 initialCoop.forEach(item => {
-                    const docRef = doc(collection(db, `artifacts/${appId}/public/data/coop`));
+                    const docRef = doc(collection(db, getCollectionPath(`coop`)));
                     batch.set(docRef, item);
                 });
 
@@ -581,12 +613,11 @@ Movie,95,The Wolfman,,,,B`;
         
         // --- REAL-TIME LISTENERS ---
         const setupListeners = () => {
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
             const categories = ['games', 'movies', 'shows', 'books'];
             
             // Listen to Ernie's data
             categories.forEach(category => {
-                const collRef = collection(db, `artifacts/${appId}/public/data/ernie_${category}`);
+                const collRef = collection(db, getCollectionPath(`ernie_${category}`));
                 onSnapshot(collRef, (snapshot) => {
                     mediaData.ernie[category] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     rerenderAll();
@@ -595,7 +626,7 @@ Movie,95,The Wolfman,,,,B`;
 
             // Listen to Jon's data
             categories.forEach(category => {
-                const collRef = collection(db, `artifacts/${appId}/public/data/jon_${category}`);
+                const collRef = collection(db, getCollectionPath(`jon_${category}`));
                 onSnapshot(collRef, (snapshot) => {
                     mediaData.jon[category] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     rerenderAll();
@@ -603,13 +634,13 @@ Movie,95,The Wolfman,,,,B`;
             });
             
             // Listen to GameClub data
-            const gameclubRef = collection(db, `artifacts/${appId}/public/data/gameclub`);
+            const gameclubRef = collection(db, getCollectionPath(`gameclub`));
             onSnapshot(gameclubRef, (snapshot) => {
                 mediaData.gameclub = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 rerenderAll();
             });
             
-            const coopRef = collection(db, `artifacts/${appId}/public/data/coop`);
+            const coopRef = collection(db, getCollectionPath(`coop`));
             onSnapshot(coopRef, (snapshot) => {
                 mediaData.coop = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 rerenderAll();
@@ -731,13 +762,12 @@ Movie,95,The Wolfman,,,,B`;
             const person = document.getElementById('form-person').value;
             const category = document.getElementById('form-category').value;
             const itemId = document.getElementById('form-item-id').value;
-            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
             let newItemData = { title: document.getElementById('form-title').value };
-            let collectionPath;
+            let basePath;
 
             if (person === 'gameclub') {
-                collectionPath = `artifacts/${appId}/public/data/${category}`;
+                basePath = `${category}`;
                 if (category === 'gameclub') {
                     newItemData.jon = document.getElementById('form-jon-finished').checked ? 'TRUE' : 'FALSE';
                     newItemData.ernie = document.getElementById('form-ernie-finished').checked ? 'TRUE' : 'FALSE';
@@ -745,7 +775,7 @@ Movie,95,The Wolfman,,,,B`;
                     newItemData.finished = document.getElementById('form-coop-finished').checked ? 'TRUE' : 'FALSE';
                 }
             } else {
-                collectionPath = `artifacts/${appId}/public/data/${person}_${category}`;
+                basePath = `${person}_${category}`;
                 newItemData.score = document.getElementById('form-score').value;
                 newItemData.date = document.getElementById('form-date').value;
                 newItemData.platform = document.getElementById('form-platform').value;
@@ -754,6 +784,8 @@ Movie,95,The Wolfman,,,,B`;
                     newItemData.imdbLink = document.getElementById('form-imdb').value;
                 }
             }
+
+            const collectionPath = getCollectionPath(basePath);
 
             try {
                 if (itemId) {
@@ -772,10 +804,10 @@ Movie,95,The Wolfman,,,,B`;
         window.deleteItem = async (person, category, itemId) => {
             const confirmed = await showConfirm('Delete Item?', 'Are you sure you want to delete this item? This action cannot be undone.');
             if (confirmed) {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const collectionPath = person === 'gameclub' 
-                    ? `artifacts/${appId}/public/data/${category}`
-                    : `artifacts/${appId}/public/data/${person}_${category}`;
+                const basePath = person === 'gameclub' 
+                    ? `${category}`
+                    : `${person}_${category}`;
+                const collectionPath = getCollectionPath(basePath);
                 
                 try {
                     await deleteDoc(doc(db, collectionPath, itemId));
@@ -792,22 +824,15 @@ Movie,95,The Wolfman,,,,B`;
                   'This will delete any items you have added or edited and restore the original lists.'
               );
               if (confirmed) {
-                 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                  const collectionsToDelete = [
-                     `artifacts/${appId}/public/data/ernie_games`,
-                     `artifacts/${appId}/public/data/ernie_movies`,
-                     `artifacts/${appId}/public/data/ernie_shows`,
-                     `artifacts/${appId}/public/data/ernie_books`,
-                     `artifacts/${appId}/public/data/jon_games`,
-                     `artifacts/${appId}/public/data/jon_movies`,
-                     `artifacts/${appId}/public/data/jon_shows`,
-                     `artifacts/${appId}/public/data/jon_books`,
-                     `artifacts/${appId}/public/data/gameclub`,
-                     `artifacts/${appId}/public/data/coop`,
+                     `ernie_games`, `ernie_movies`, `ernie_shows`, `ernie_books`,
+                     `jon_games`, `jon_movies`, `jon_shows`, `jon_books`,
+                     `gameclub`, `coop`,
                  ];
 
                  const deleteCollection = async (path) => {
-                     const querySnapshot = await getDocs(collection(db, path));
+                     const collectionPath = getCollectionPath(path);
+                     const querySnapshot = await getDocs(collection(db, collectionPath));
                      const batch = writeBatch(db);
                      querySnapshot.forEach((doc) => {
                          batch.delete(doc.ref);
@@ -881,6 +906,7 @@ Movie,95,The Wolfman,,,,B`;
         
         const renderOverview = () => {
             const container = document.getElementById('overview');
+            if (!container) return;
             const ernieTotals = {
                 games: mediaData.ernie.games?.length || 0,
                 movies: mediaData.ernie.movies?.length || 0,
@@ -951,6 +977,7 @@ Movie,95,The Wolfman,,,,B`;
 
         const renderPersonPage = (containerId, data) => {
             const container = document.getElementById(containerId);
+            if (!container) return;
             container.innerHTML = `
                 ${createSection('Video Games', data.games || [], 'Games', containerId)}
                 ${createSection('Movies', data.movies || [], 'Movies', containerId)}
@@ -960,6 +987,7 @@ Movie,95,The Wolfman,,,,B`;
         
         const renderGameClub = () => {
             const container = document.getElementById('gameclub');
+            if (!container) return;
             const createGameClubRow = (item) => `<li class="card list-item rounded-lg p-4 flex items-center justify-between"><span class="font-semibold">${item.title}</span><div class="flex items-center gap-4"><span class="flex items-center gap-2 text-sm">Jon: ${item.jon === 'TRUE' ? '✅' : '❌'}</span><span class="flex items-center gap-2 text-sm">Ernie: ${item.ernie === 'TRUE' ? '✅' : '❌'}</span></div><div class="card-actions"><button class="card-action-btn" onclick="openModal('gameclub', 'gameclub', '${item.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button><button class="card-action-btn" onclick="deleteItem('gameclub', 'gameclub', '${item.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button></div></li>`;
             const createCoopRow = (item) => `<li class="card list-item rounded-lg p-4 flex items-center justify-between"><span class="font-semibold">${item.title}</span><span class="text-sm">${item.finished === 'TRUE' ? '✅ Finished' : '❌ In Progress'}</span><div class="card-actions"><button class="card-action-btn" onclick="openModal('gameclub', 'coop', '${item.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill text-white" viewBox="0 0 16 16"><path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/></svg></button><button class="card-action-btn" onclick="deleteItem('gameclub', 'coop', '${item.id}')"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash-fill text-white" viewBox="0 0 16 16"><path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/></svg></button></div></li>`;
             container.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-2 gap-8"><div><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">GameClub List</h2><button class="btn-primary text-sm py-1 px-3" onclick="openModal('gameclub', 'gameclub')">+ Add</button></div><ul class="space-y-3">${(mediaData.gameclub || []).map(createGameClubRow).join('')}</ul></div><div><div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">Co-Op List</h2><button class="btn-primary text-sm py-1 px-3" onclick="openModal('gameclub', 'coop')">+ Add</button></div><ul class="space-y-3">${(mediaData.coop || []).map(createCoopRow).join('')}</ul></div></div>`;
@@ -968,8 +996,10 @@ Movie,95,The Wolfman,,,,B`;
         window.sortAndRerender = (person, category, sortBy, clickedButton) => {
             if (clickedButton) {
                 const controlsContainer = document.getElementById(`sort-controls-${person}-${category}`);
-                controlsContainer.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('sort-btn-active'));
-                clickedButton.classList.add('sort-btn-active');
+                if (controlsContainer) {
+                    controlsContainer.querySelectorAll('.sort-btn').forEach(btn => btn.classList.remove('sort-btn-active'));
+                    clickedButton.classList.add('sort-btn-active');
+                }
             }
             const dataToSort = mediaData[person][category];
             dataToSort.sort((a, b) => {
@@ -979,11 +1009,15 @@ Movie,95,The Wolfman,,,,B`;
                 return 0;
             });
             const grid = document.getElementById(`${person}-${category}-grid`);
-            grid.innerHTML = dataToSort.map(item => createCard(item, category, person, category)).join('');
+            if (grid) {
+                grid.innerHTML = dataToSort.map(item => createCard(item, category, person, category)).join('');
+            }
         };
 
         const rerenderAll = () => {
-            const currentTab = document.querySelector('.tab-active').getAttribute('onclick').match(/'([^']+)'/)[1];
+            const activeTabButton = document.querySelector('.tab-active');
+            if (!activeTabButton) return;
+            const currentTab = activeTabButton.getAttribute('onclick').match(/'([^']+)'/)[1];
             if (currentTab === 'overview') renderOverview();
             if (currentTab === 'ernie') renderPersonPage('ernie', mediaData.ernie);
             if (currentTab === 'jon') renderPersonPage('jon', mediaData.jon);
@@ -992,9 +1026,13 @@ Movie,95,The Wolfman,,,,B`;
 
         window.showTab = (tabId) => {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
-            document.getElementById(tabId).classList.remove('hidden');
+            const activeTabContent = document.getElementById(tabId);
+            if(activeTabContent) activeTabContent.classList.remove('hidden');
+            
             document.querySelectorAll('.tab').forEach(button => button.classList.remove('tab-active'));
-            document.querySelector(`.tab[onclick="showTab('${tabId}')"]`).classList.add('tab-active');
+            const activeTabButton = document.querySelector(`.tab[onclick="showTab('${tabId}')"]`);
+            if(activeTabButton) activeTabButton.classList.add('tab-active');
+            
             rerenderAll(); // Rerender content when tab changes
         };
 
@@ -1111,14 +1149,16 @@ Movie,95,The Wolfman,,,,B`;
 
         // --- INITIALIZATION ---
         document.addEventListener('DOMContentLoaded', () => {
-            setupFirebase(); // Main entry point
-            
-            // Other initializations
-            showTab('overview');
-            form.addEventListener('submit', handleFormSubmit);
-            themeToggleBtn.addEventListener('click', toggleTheme);
-            document.getElementById('reset-data-btn').addEventListener('click', resetData);
-            applyInitialTheme();
+            setupFirebase().then(() => {
+                // Only set up the rest of the app if Firebase initializes successfully
+                showTab('overview');
+                form.addEventListener('submit', handleFormSubmit);
+                themeToggleBtn.addEventListener('click', toggleTheme);
+                document.getElementById('reset-data-btn').addEventListener('click', resetData);
+                applyInitialTheme();
+            }).catch(err => {
+                console.log("Skipping UI setup due to Firebase error.");
+            });
         });
     </script>
 </body>
